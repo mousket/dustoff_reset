@@ -1,14 +1,23 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+// Library crate for Dustoff Reset
+// Modules are also declared in main.rs for the binary crate
+// This lib.rs provides exports for tests and potential future library use
+
+#![allow(ambiguous_glob_reexports)]
+
+use rusqlite::Connection;
+use std::sync::Mutex;
+
+pub mod commands;
+pub mod models;
+pub mod storage;
+
+/// App state holding database connection.
+/// Used by Tauri commands to access the database.
+pub struct AppState {
+    pub db: Mutex<Connection>,
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
+// Re-exports for convenient access
+pub use commands::*;
+pub use models::*;
+pub use storage::*;

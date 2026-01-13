@@ -1,0 +1,135 @@
+
+import { useState, useEffect } from "react"
+import type { ResetPanelProps, RitualType, RitualOption } from "./types"
+import { TimerHalo } from "@/components/animations/TimerHalo"
+
+export function ResetPanel({ isOpen, onClose, onSelectRitual, sessionMode = "Zen" }: ResetPanelProps) {
+  const [activeRitual, setActiveRitual] = useState<RitualType | null>(null)
+  const [timeRemaining, setTimeRemaining] = useState(0)
+
+  const ritualOptions: RitualOption[] = [
+    {
+      id: "breath",
+      label: "Breath Reset",
+      duration: 120,
+      description: "Ground yourself with breathing",
+    },
+    {
+      id: "walk",
+      label: "Walk Reset",
+      duration: 300,
+      description: "Take a short walk",
+    },
+    {
+      id: "dump",
+      label: "Dump Reset",
+      duration: 180,
+      description: "Write down your thoughts",
+    },
+    {
+      id: "personal",
+      label: "Personal",
+      duration: 240,
+      description: "Conversation, bathroom break",
+    },
+  ]
+
+  useEffect(() => {
+    if (activeRitual && timeRemaining > 0) {
+      const interval = setInterval(() => {
+        setTimeRemaining((prev) => {
+          if (prev <= 1) {
+            setActiveRitual(null)
+            onClose()
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [activeRitual, timeRemaining, onClose])
+
+  const handleSelectRitual = (ritual: RitualOption) => {
+    setActiveRitual(ritual.id)
+    setTimeRemaining(ritual.duration)
+    onSelectRitual(ritual.id)
+  }
+
+  const handleSkipRitual = () => {
+    setActiveRitual(null)
+    setTimeRemaining(0)
+    onClose()
+  }
+
+  if (!isOpen) return null
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  return (
+    <div className="w-[475px] rounded-3xl bg-[#0a0f0d]/55 backdrop-blur-xl border border-emerald-500/30 shadow-2xl overflow-hidden">
+      <div className="p-6 space-y-6">
+        {activeRitual ? (
+          // Ritual in progress view
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-light text-white">
+                {ritualOptions.find((r) => r.id === activeRitual)?.label}
+              </h2>
+              <p className="text-sm text-zinc-400 mt-2">
+                {ritualOptions.find((r) => r.id === activeRitual)?.description}
+              </p>
+            </div>
+
+            {/* Centered countdown with pulse ring animation */}
+            <div className="flex justify-center">
+              <TimerHalo variant="pulse-ring" color="emerald" size={160}>
+                <div className="text-4xl font-bold text-emerald-400">{formatTime(timeRemaining)}</div>
+              </TimerHalo>
+            </div>
+
+            <button
+              onClick={handleSkipRitual}
+              className="w-full px-6 py-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-medium transition-colors text-sm"
+            >
+              Skip & Resume
+            </button>
+          </div>
+        ) : (
+          // Ritual selection view
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-light text-emerald-400">Choose Your Reset</h2>
+              <p className="text-sm text-zinc-400 mt-2">Take a moment to recharge and return focused</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {ritualOptions.map((ritual) => (
+                <button
+                  key={ritual.id}
+                  onClick={() => handleSelectRitual(ritual)}
+                  className="p-4 rounded-lg border border-zinc-700 bg-[#0a0f0d]/80 hover:bg-zinc-800/50 hover:border-emerald-500 transition-all group text-center"
+                >
+                  <div className="text-sm font-light text-emerald-400 transition-colors mb-1">{ritual.label}</div>
+                  <div className="text-xs text-zinc-500 mb-2">{ritual.description}</div>
+                  <div className="text-xs text-emerald-400 font-mono">{Math.floor(ritual.duration / 60)} min</div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={onClose}
+              className="w-full px-6 py-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-medium transition-colors text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
