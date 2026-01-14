@@ -46,7 +46,7 @@ export function PostSessionSummaryAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={550}>
+    <PanelContainer isOpen={isOpen}>
       <PostSessionSummaryPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         session={session}

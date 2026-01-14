@@ -1,40 +1,23 @@
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import type { PreSessionPanelProps, SessionType } from "./types"
 import { TimerHalo } from "@/components/animations/TimerHalo"
 import { getActiveParkingLotItems } from "@/lib/parking-lot-storage"
+import { tauriBridge, InstalledApp } from "@/lib/tauri-bridge"
+import { EmeraldSelect } from "@/components/ui/EmeraldSelect"
 
-const COMMON_APPS = [
-  "VS Code",
-  "Visual Studio Code",
-  "Chrome",
-  "Google Chrome",
-  "Safari",
-  "Firefox",
-  "Edge",
-  "Word",
-  "Microsoft Word",
-  "Excel",
-  "Microsoft Excel",
-  "PowerPoint",
-  "Microsoft PowerPoint",
-  "Outlook",
-  "Microsoft Outlook",
-  "Notepad",
-  "Paint",
-  "Slack",
-  "Discord",
-  "Zoom",
-  "Teams",
-  "Microsoft Teams",
-  "Figma",
-  "Photoshop",
-  "Illustrator",
-  "Notion",
-  "Obsidian",
-  "Spotify",
-  "Terminal",
-]
+// Category icons for visual distinction
+const CATEGORY_ICONS: Record<string, string> = {
+  browser: "🌐",
+  editor: "⌘",
+  communication: "💬",
+  design: "◆",
+  productivity: "📝",
+  office: "📄",
+  media: "🎵",
+  terminal: "▶",
+  default: "●",
+}
 
 export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanelProps) {
   const [step, setStep] = useState(1)
@@ -44,8 +27,8 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
   const [mode, setMode] = useState<"Zen" | "Flow" | "Legend">("Zen")
   const [duration, setDuration] = useState(50)
   const [whitelistedApps, setWhitelistedApps] = useState<string[]>([])
-  const [whitelistedBrowser, setWhitelistedBrowser] = useState("Chrome")
-  const [whitelistedTabs, setWhitelistedTabs] = useState<string[]>([])
+  const [whitelistedBrowser, setWhitelistedBrowser] = useState("")
+  const [whitelistedDomains, setWhitelistedDomains] = useState<string[]>(["", "", ""])
   const [systemChecksComplete, setSystemChecksComplete] = useState(false)
   const [emotionalGrounding, setEmotionalGrounding] = useState(5)
   const [preparationMinutes, setPreparationMinutes] = useState(3)
@@ -53,26 +36,63 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
   const [isPreparationStarted, setIsPreparationStarted] = useState(false)
   const [preparationTimeLeft, setPreparationTimeLeft] = useState(0)
   const [appSearchQuery, setAppSearchQuery] = useState("")
-  const [appSuggestions, setAppSuggestions] = useState<string[]>([])
   const [isPrimaryIntentionValid, setIsPrimaryIntentionValid] = useState(true)
   const [parkingLotItems, setParkingLotItems] = useState<
     Array<{ id: string; text: string; action?: string; status: string }>
   >([])
   const [hasParkingLotItems, setHasParkingLotItems] = useState(false)
+  
+  // New state for system apps
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([])
+  const [installedBrowsers, setInstalledBrowsers] = useState<InstalledApp[]>([])
+  const [isLoadingApps, setIsLoadingApps] = useState(false)
+  const [showAppDropdown, setShowAppDropdown] = useState(false)
 
+  // Load parking lot items when panel opens (lightweight)
   useEffect(() => {
     if (isOpen) {
+      // Load parking lot items - this is fast/local
       const nextSessionItems = getActiveParkingLotItems().filter(
         (item) => item.action === "next-session" && item.status === "OPEN",
       )
       const allItems = getActiveParkingLotItems()
-
       setParkingLotItems(allItems)
       setHasParkingLotItems(allItems.length > 0)
-
       setSelectedParkingLotItems(nextSessionItems.map((item) => item.text))
     }
   }, [isOpen])
+  
+  // Fetch installed apps ONLY when reaching whitelist step (step 3)
+  // This prevents the UI freeze on panel open
+  useEffect(() => {
+    if (isOpen && step === 3 && installedApps.length === 0 && !isLoadingApps) {
+      const fetchApps = async () => {
+        setIsLoadingApps(true)
+        try {
+          // Fetch apps and browsers in parallel
+          const [apps, browsers] = await Promise.all([
+            tauriBridge.getSystemApps(),
+            tauriBridge.getSystemBrowsers(),
+          ])
+          setInstalledApps(apps)
+          setInstalledBrowsers(browsers)
+          
+          // Set default browser if we found browsers
+          if (browsers.length > 0 && !whitelistedBrowser) {
+            // Prefer Chrome, Safari, or first browser
+            const chrome = browsers.find(b => b.name.toLowerCase().includes('chrome'))
+            const safari = browsers.find(b => b.name.toLowerCase().includes('safari'))
+            setWhitelistedBrowser(chrome?.name || safari?.name || browsers[0].name)
+          }
+        } catch (error) {
+          console.error('[PreSession] Failed to fetch apps:', error)
+        } finally {
+          setIsLoadingApps(false)
+        }
+      }
+      fetchApps()
+    }
+  }, [isOpen, step, installedApps.length, isLoadingApps, whitelistedBrowser])
 
   useEffect(() => {
     if (isPreparationStarted && preparationTimeLeft > 0) {
@@ -84,14 +104,18 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
     }
   }, [isPreparationStarted, preparationTimeLeft])
 
-  useEffect(() => {
-    if (appSearchQuery.trim()) {
-      const filtered = COMMON_APPS.filter((app) => app.toLowerCase().includes(appSearchQuery.toLowerCase())).slice(0, 5)
-      setAppSuggestions(filtered)
-    } else {
-      setAppSuggestions([])
-    }
-  }, [appSearchQuery])
+  // Filter apps based on search query
+  const filteredApps = useMemo(() => {
+    if (!appSearchQuery.trim()) return installedApps.slice(0, 8)
+    return installedApps
+      .filter((app) => app.name.toLowerCase().includes(appSearchQuery.toLowerCase()))
+      .slice(0, 8)
+  }, [appSearchQuery, installedApps])
+
+  // Get whitelisted domains (filter empty strings)
+  const activeWhitelistedDomains = useMemo(() => {
+    return whitelistedDomains.filter(d => d.trim().length > 0)
+  }, [whitelistedDomains])
 
   const handleNext = () => {
     if (step === 5 && !systemChecksComplete) {
@@ -127,7 +151,7 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
       duration,
       whitelistedApps,
       whitelistedBrowser,
-      whitelistedTabs,
+      whitelistedTabs: activeWhitelistedDomains, // Use domain-based matching
       systemChecksComplete,
       emotionalGrounding,
       preparationMinutes,
@@ -141,12 +165,28 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
     )
   }
 
-  const toggleWhitelistItem = (category: "apps" | "tabs", item: string) => {
-    if (category === "apps") {
-      setWhitelistedApps((prev) => (prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]))
-    } else {
-      setWhitelistedTabs((prev) => (prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]))
+  const toggleWhitelistApp = (appName: string) => {
+    setWhitelistedApps((prev) => 
+      prev.includes(appName) ? prev.filter((a) => a !== appName) : [...prev, appName]
+    )
+  }
+
+  const updateDomain = (index: number, value: string) => {
+    setWhitelistedDomains(prev => {
+      const updated = [...prev]
+      updated[index] = value
+      return updated
+    })
+  }
+
+  const addDomainField = () => {
+    if (whitelistedDomains.length < 5) {
+      setWhitelistedDomains(prev => [...prev, ""])
     }
+  }
+
+  const getCategoryIcon = (category: string | null) => {
+    return CATEGORY_ICONS[category || "default"] || CATEGORY_ICONS.default
   }
 
   const preparationOptions = [
@@ -164,10 +204,10 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
 
   return (
     <div
-      className="rounded-3xl bg-[#0a0f0d]/55 backdrop-blur-xl border border-emerald-500/30 shadow-2xl transition-all duration-300 overflow-hidden"
-      style={{ width: "380px", maxHeight: "calc(100vh - 120px)" }}
+      className="rounded-3xl bg-[#0a0f0d]/80 backdrop-blur-xl border border-emerald-500/30 shadow-2xl transition-all duration-300"
+      style={{ width: "380px" }}
     >
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-emerald-500/20">
           <div>
@@ -192,8 +232,8 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
           />
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        {/* Content - scrollable with max height */}
+        <div className="overflow-y-auto px-5 py-4 max-h-[480px]">
           {step === 1 && (
             <div className="space-y-4">
               <div>
@@ -347,54 +387,105 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
               </div>
 
               <div>
-                <div className="relative">
+                {/* Search Input with emerald accent */}
+                <div className="relative mb-3">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                   <input
                     type="text"
                     value={appSearchQuery}
-                    onChange={(e) => setAppSearchQuery(e.target.value)}
-                    placeholder="Type to search apps..."
-                    className="w-full px-3 py-2 bg-zinc-900/80 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-zinc-400 focus:border-emerald-500 focus:outline-none transition-colors mb-3"
+                    onChange={(e) => {
+                      setAppSearchQuery(e.target.value)
+                      setShowAppDropdown(true)
+                    }}
+                    onFocus={() => setShowAppDropdown(true)}
+                    placeholder={isLoadingApps ? "Loading apps..." : "Search installed apps..."}
+                    disabled={isLoadingApps}
+                    className="w-full pl-8 pr-10 py-2.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-white placeholder:text-zinc-500 focus:border-emerald-500/60 focus:bg-emerald-500/10 focus:outline-none transition-all text-sm"
                   />
-
-                  {appSuggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900/95 backdrop-blur-xl border border-zinc-700 rounded-lg shadow-2xl z-50 max-h-[200px] overflow-y-auto scrollbar-hide">
-                      {appSuggestions.map((app) => (
-                        <button
-                          key={app}
-                          onClick={() => {
-                            toggleWhitelistItem("apps", app)
-                            setAppSearchQuery("")
-                            setAppSuggestions([])
-                          }}
-                          className="w-full px-3 py-2.5 text-left text-sm text-white hover:bg-emerald-500/20 transition-colors border-b border-zinc-800 last:border-b-0"
-                        >
-                          {app}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
 
-                {whitelistedApps.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {whitelistedApps.map((app) => (
-                      <span
-                        key={app}
-                        className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs rounded-full flex items-center gap-1.5"
-                      >
-                        {app}
+                {/* App Dropdown with Emerald Contour style */}
+                {showAppDropdown && filteredApps.length > 0 && (
+                  <div className="bg-black/60 backdrop-blur-xl border border-emerald-500/20 rounded-xl overflow-hidden mb-4 shadow-lg shadow-emerald-500/5 max-h-[200px] overflow-y-auto scrollbar-hide">
+                    {filteredApps.map((app, index) => {
+                      const isSelected = whitelistedApps.includes(app.name)
+                      return (
                         <button
-                          onClick={() => toggleWhitelistItem("apps", app)}
-                          className="hover:text-emerald-300 text-sm"
+                          key={app.identifier}
+                          onClick={() => {
+                            toggleWhitelistApp(app.name)
+                            setAppSearchQuery("")
+                          }}
+                          className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${
+                            isSelected 
+                              ? "bg-emerald-500/10" 
+                              : "hover:bg-emerald-500/5"
+                          } ${index < filteredApps.length - 1 ? "border-b border-dashed border-emerald-500/10" : ""}`}
                         >
-                          ×
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 bg-emerald-500/10 rounded-lg flex items-center justify-center text-xs">
+                              {getCategoryIcon(app.category)}
+                            </span>
+                            <div className="text-left">
+                              <span className={`text-sm block ${isSelected ? "text-white" : "text-zinc-200"}`}>
+                                {app.name}
+                              </span>
+                              {app.category && (
+                                <span className="text-zinc-500 text-xs">{app.category}</span>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && <span className="text-emerald-400 text-lg">✓</span>}
                         </button>
-                      </span>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
-                <p className="text-xs text-zinc-400">Start typing to see suggestions</p>
+                {/* Close dropdown button */}
+                {showAppDropdown && (
+                  <button
+                    onClick={() => setShowAppDropdown(false)}
+                    className="text-xs text-zinc-500 hover:text-zinc-400 mb-3"
+                  >
+                    Close list
+                  </button>
+                )}
+
+                {/* Selected Apps as Emerald Chips */}
+                {whitelistedApps.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {whitelistedApps.map((appName) => {
+                      const app = installedApps.find(a => a.name === appName)
+                      return (
+                        <span
+                          key={appName}
+                          className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs rounded-full flex items-center gap-2 shadow-sm shadow-emerald-500/10"
+                        >
+                          <span className="w-4 h-4 bg-emerald-500/20 rounded flex items-center justify-center text-[10px]">
+                            {getCategoryIcon(app?.category || null)}
+                          </span>
+                          {appName}
+                          <button
+                            onClick={() => toggleWhitelistApp(appName)}
+                            className="hover:text-emerald-100 text-emerald-400/60 ml-1"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-zinc-500">
+                  {installedApps.length > 0 
+                    ? `${installedApps.length} apps found on your system`
+                    : "Loading installed apps..."}
+                </p>
               </div>
             </div>
           )}
@@ -402,52 +493,118 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
           {step === 4 && sessionType !== "parking-lot" && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-bold text-white mb-1">Whitelist: Browser & Tabs</h3>
-                <p className="text-sm text-zinc-300 mb-4">Which browser will you use?</p>
+                <h3 className="text-sm font-bold text-white mb-1">Whitelist: Browser & Domains</h3>
+                <p className="text-sm text-zinc-300 mb-4">Which browser and sites will you use?</p>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Browser Selection - Button Group */}
                 <div>
-                  <label className="block text-sm font-medium text-zinc-200 mb-1.5">Browser</label>
-                  <select
-                    value={whitelistedBrowser}
-                    onChange={(e) => setWhitelistedBrowser(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-900/80 border border-zinc-700 rounded-lg text-white text-sm focus:border-emerald-500 focus:outline-none transition-colors"
-                  >
-                    <option value="Safari">Safari</option>
-                    <option value="Chrome">Chrome</option>
-                    <option value="Firefox">Firefox</option>
-                    <option value="Edge">Edge</option>
-                    <option value="None">None</option>
-                  </select>
+                  <label className="block text-sm font-medium text-zinc-200 mb-2">Browser</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {installedBrowsers.length > 0 ? (
+                      <>
+                        {installedBrowsers.map((browser) => (
+                          <button
+                            key={browser.identifier}
+                            onClick={() => setWhitelistedBrowser(browser.name)}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                              whitelistedBrowser === browser.name
+                                ? "bg-emerald-500/10 border-2 border-emerald-500/50 text-emerald-300"
+                                : "bg-zinc-800/30 border border-zinc-700/50 text-zinc-400 hover:border-zinc-600"
+                            }`}
+                          >
+                            🌐 {browser.name}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setWhitelistedBrowser("None")}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                            whitelistedBrowser === "None"
+                              ? "bg-emerald-500/10 border-2 border-emerald-500/50 text-emerald-300"
+                              : "bg-zinc-800/30 border border-zinc-700/50 text-zinc-400 hover:border-zinc-600"
+                          }`}
+                        >
+                          None
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-zinc-500 text-sm">Loading browsers...</span>
+                    )}
+                  </div>
                 </div>
 
+                {/* Domain Input Section */}
                 {whitelistedBrowser !== "None" && (
                   <div>
                     <label className="block text-sm font-medium text-zinc-200 mb-1.5">
-                      Add allowed tabs (website or activity)
+                      Allowed Domains
                     </label>
-                    <div className="space-y-1.5">
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <input
-                          key={i}
-                          type="text"
-                          placeholder={
-                            i === 0
-                              ? "docs.google.com"
-                              : i === 1
-                                ? "notion.so/project-plan"
-                                : i === 2
-                                  ? "email"
-                                  : i === 3
-                                    ? "research article"
-                                    : "calendar"
-                          }
-                          className="w-full px-3 py-1.5 bg-zinc-900/80 border border-zinc-700 rounded-lg text-white placeholder:text-zinc-400 focus:border-emerald-500 focus:outline-none transition-colors text-xs"
-                        />
+                    <p className="text-xs text-zinc-500 mb-3">
+                      Enter domains — we'll match any URL containing them
+                    </p>
+                    
+                    <div className="space-y-2 mb-3">
+                      {whitelistedDomains.map((domain, index) => (
+                        <div key={index} className="relative">
+                          <input
+                            type="text"
+                            value={domain}
+                            onChange={(e) => updateDomain(index, e.target.value)}
+                            placeholder={
+                              index === 0
+                                ? "gemini.google.com"
+                                : index === 1
+                                  ? "docs.google.com"
+                                  : "github.com"
+                            }
+                            className={`w-full px-4 py-2.5 rounded-xl text-sm transition-all focus:outline-none ${
+                              domain.trim()
+                                ? "bg-emerald-500/5 border border-emerald-500/30 text-emerald-300 focus:border-emerald-500/60"
+                                : "bg-black/20 border border-zinc-700/50 text-white placeholder:text-zinc-600 focus:border-emerald-500/30 focus:bg-emerald-500/5"
+                            }`}
+                          />
+                          {domain.trim() && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500/60 text-xs">
+                              ✓ matches /...
+                            </span>
+                          )}
+                        </div>
                       ))}
                     </div>
-                    <p className="text-xs text-zinc-400 mt-1.5">At least 1 tab required</p>
+
+                    {/* Add more domains button */}
+                    {whitelistedDomains.length < 5 && (
+                      <button
+                        onClick={addDomainField}
+                        className="text-xs text-emerald-500/60 hover:text-emerald-400 flex items-center gap-1 mb-4"
+                      >
+                        <span>+</span> Add another domain
+                      </button>
+                    )}
+
+                    {/* Example matching explanation */}
+                    {activeWhitelistedDomains.length > 0 && (
+                      <div className="bg-black/30 rounded-xl p-4 border border-zinc-800">
+                        <p className="text-xs text-zinc-500 mb-2">
+                          Example: <span className="text-emerald-400">{activeWhitelistedDomains[0]}</span> will allow:
+                        </p>
+                        <ul className="text-xs text-zinc-400 space-y-1">
+                          <li className="flex items-center gap-2">
+                            <span className="text-emerald-400">✓</span>
+                            https://{activeWhitelistedDomains[0]}/any/path/here
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="text-emerald-400">✓</span>
+                            https://{activeWhitelistedDomains[0]}/app/12345
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="text-red-400">✗</span>
+                            https://other-site.com/{activeWhitelistedDomains[0]}
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -467,16 +624,16 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
                     <label className="block text-sm font-medium text-zinc-200 mb-1.5">
                       How many minutes do you need to prepare?
                     </label>
-                    <select
+                    <EmeraldSelect
                       value={preparationMinutes}
-                      onChange={(e) => setPreparationMinutes(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-zinc-900/80 border border-zinc-700 rounded-lg text-white text-sm focus:border-emerald-500 focus:outline-none transition-colors"
-                    >
-                      <option value={1}>1 minute</option>
-                      <option value={2}>2 minutes</option>
-                      <option value={3}>3 minutes</option>
-                      <option value={5}>5 minutes</option>
-                    </select>
+                      onChange={(val) => setPreparationMinutes(Number(val))}
+                      options={[
+                        { value: 1, label: "1 minute", icon: "⏱" },
+                        { value: 2, label: "2 minutes", icon: "⏱" },
+                        { value: 3, label: "3 minutes", icon: "⏱" },
+                        { value: 5, label: "5 minutes", icon: "⏱" },
+                      ]}
+                    />
                   </div>
 
                   <div>
@@ -548,7 +705,7 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
                     onClick={() => {
                       setPreparationTimeLeft(0)
                     }}
-                    className="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-400 rounded-lg font-semibold text-sm transition-all"
+                    className="relative z-20 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-400 rounded-lg font-semibold text-sm transition-all active:scale-95"
                   >
                     Start Now
                   </button>

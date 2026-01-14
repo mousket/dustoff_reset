@@ -10,6 +10,7 @@ use std::sync::Mutex;
 pub mod commands;
 pub mod models;
 pub mod storage;
+pub mod telemetry;
 
 /// App state holding database connection.
 /// Used by Tauri commands to access the database.
@@ -21,3 +22,4 @@ pub struct AppState {
 pub use commands::*;
 pub use models::*;
 pub use storage::*;
+pub use telemetry::*;

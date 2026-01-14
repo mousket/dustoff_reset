@@ -25,7 +25,7 @@ interface HUDAdapterProps {
   onCalibrate: () => void
   onOpenHistory?: () => void
   onOpenSettings?: () => void
-  onReset?: () => void
+  onReset?: () => void  // Open reset rituals panel
 }
 
 export function HUDAdapter({
@@ -44,6 +44,7 @@ export function HUDAdapter({
   onCalibrate,
   onOpenHistory,
   onOpenSettings,
+  onReset,
 }: HUDAdapterProps) {
   
   // Map App modes to HUD modes
@@ -84,6 +85,10 @@ export function HUDAdapter({
   const handleOpenSettings = onOpenSettings || (() => {
     console.log('Settings not yet implemented')
   })
+
+  const handleReset = onReset || (() => {
+    console.log('Reset not yet implemented')
+  })
   
   return (
     <div 
@@ -107,6 +112,7 @@ export function HUDAdapter({
         onOpenParkingLot={onOpenParkingLot}
         onOpenHistory={handleOpenHistory}
         onOpenSettings={handleOpenSettings}
+        onReset={handleReset}
       />
     </div>
   )

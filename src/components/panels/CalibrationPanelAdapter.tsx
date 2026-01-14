@@ -119,7 +119,7 @@ export function CalibrationPanelAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={400}>
+    <PanelContainer isOpen={isOpen}>
       <DailyCalibrationPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         onComplete={handleCalibrationComplete}

@@ -54,7 +54,7 @@ export function PreSessionPanelAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={400}>
+    <PanelContainer isOpen={isOpen}>
       <PreSessionPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         onComplete={handleComplete}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { tauriBridge, CalibrationData, RecoveryData, ReflectionObject } from '@/lib/tauri-bridge'
 import { resizeForPanel, PanelType } from '@/hooks/useTauriWindow'
 import { HUDAdapter } from '@/components/HUDAdapter'
@@ -9,10 +9,25 @@ import { useSessionManager, SessionConfig } from '@/hooks/useSessionManager'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import { useBandwidthEngine } from '@/hooks/useBandwidthEngine'
 
+// Telemetry
+import { 
+  setupTelemetryListeners, 
+  cleanupTelemetryListeners,
+  calculateAppSwitchPenalty,
+  calculateDomainPenalty,
+  calculateBonus,
+  getAppCategory,
+  getDomainCategory,
+  isAppWhitelisted,
+  isDomainWhitelisted,
+  AppCategory,
+  type TelemetryEvent,
+} from '@/lib/telemetry'
+
 // Panel Adapters
 import { CalibrationPanelAdapter } from '@/components/panels/CalibrationPanelAdapter'
 import { PreSessionPanelAdapter, PreSessionConfig } from '@/components/panels/PreSessionPanelAdapter'
-import { ResetPanelAdapter, RitualType } from '@/components/panels/ResetPanelAdapter'
+import { ResetPanelAdapter, RitualType, RitualCompletionData } from '@/components/panels/ResetPanelAdapter'
 import { ParkingLotPanelAdapter } from '@/components/panels/ParkingLotPanelAdapter'
 import { ParkingLotHarvestAdapter } from '@/components/panels/ParkingLotHarvestAdapter'
 import { PostSessionSummaryAdapter } from '@/components/panels/PostSessionSummaryAdapter'
@@ -27,10 +42,21 @@ import { FlowCelebrationOverlay } from '@/features/desktop/overlays/FlowCelebrat
 import { EndSessionModalAdapter } from '@/components/modals/EndSessionModalAdapter'
 import { InterruptedSessionModalAdapter } from '@/components/modals/InterruptedSessionModalAdapter'
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
+// Dev utilities - exposes helpers to browser console
+import '@/lib/dev-utils'
+
 type AppMode = 'loading' | 'recovery' | 'not-calibrated' | 'idle' | 'pre-session' | 'session' | 'paused' | 'post-session'
 type InterventionType = 'friction' | 'focus-slipping'
 
 function App() {
+  // ============================================
+  // WINDOW SETUP - Always on top
+  // ============================================
+  useEffect(() => {
+    getCurrentWindow().setAlwaysOnTop(true)
+  }, [])
   // ============================================
   // CORE STATE
   // ============================================
@@ -49,6 +75,12 @@ function App() {
 
   // Modal state
   const [showEndSessionModal, setShowEndSessionModal] = useState(false)
+
+  // Telemetry cleanup function ref
+  const telemetryCleanupRef = useRef<(() => void) | null>(null)
+  
+  // Telemetry offense tracking for escalation
+  const offenseCountRef = useRef(0)
 
   // ============================================
   // SESSION MANAGER HOOK
@@ -112,6 +144,15 @@ function App() {
   useEffect(() => {
     resizeForPanel(currentPanel)
   }, [currentPanel])
+
+  // Resize window when end session modal opens
+  useEffect(() => {
+    if (showEndSessionModal) {
+      resizeForPanel('endSession')
+    } else if (!currentPanel) {
+      resizeForPanel(null) // Back to HUD only
+    }
+  }, [showEndSessionModal, currentPanel])
 
   const initializeApp = useCallback(async () => {
     try {
@@ -239,6 +280,146 @@ function App() {
       setMode('session')
 
       console.log('[App] Session started:', sessionManager.sessionId)
+      console.log('[App] Whitelisted apps:', config.whitelistedApps)
+      console.log('[App] Whitelisted tabs:', config.whitelistedTabs)
+
+      // === TELEMETRY: Start monitoring ===
+      if (sessionManager.sessionId) {
+        console.log('[Telemetry] About to start monitor...')
+        try {
+          // Start the telemetry monitor with whitelisted apps/tabs
+          console.log('[Telemetry] Calling tauriBridge.startTelemetryMonitor...')
+          await tauriBridge.startTelemetryMonitor(
+            sessionManager.sessionId,
+            config.whitelistedApps,
+            config.whitelistedTabs
+          )
+          console.log('[Telemetry] ✅ Monitor started for session:', sessionManager.sessionId)
+
+          // Reset offense count for new session
+          offenseCountRef.current = 0
+          
+          // Store session config for penalty calculation
+          const sessionMode = config.mode as 'Zen' | 'Flow' | 'Legend'
+          const whitelistedApps = config.whitelistedApps
+          const whitelistedTabs = config.whitelistedTabs
+          
+          // Setup event listeners
+          const cleanup = await setupTelemetryListeners({
+            onAppSwitch: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              const isWhitelisted = isAppWhitelisted(event.appInfo, whitelistedApps)
+              
+              console.log(`[Telemetry] 📱 App switch: ${appName} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              // Calculate penalty (even for whitelisted, to get category info)
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                isWhitelisted
+              )
+              
+              // Apply penalty if there is one
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName})`
+                )
+              }
+            },
+            onNonWhitelistedApp: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              
+              console.log(`[Telemetry] ⚠️ Non-whitelisted app: ${appName} | Category: ${category}`)
+              
+              // Calculate and apply penalty
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false // Not whitelisted
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName}) - not whitelisted`
+                )
+              }
+            },
+            onTabSwitch: (event) => {
+              if (!event.browserTab?.domain) return
+              
+              const domain = event.browserTab.domain
+              const category = getDomainCategory(domain)
+              const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+              
+              console.log(`[Telemetry] 🌐 Tab switch: ${domain} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              // Penalty is applied in onNonWhitelistedDomain to avoid double penalty
+              // This handler is for logging/tracking only
+            },
+            onNonWhitelistedDomain: (event) => {
+              if (!event.browserTab?.domain) return
+              
+              const domain = event.browserTab.domain
+              const category = getDomainCategory(domain)
+              const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+              
+              // Skip if actually whitelisted (shouldn't happen, but safety check)
+              if (isWhitelisted) {
+                console.log(`[Telemetry] ✅ Domain is whitelisted: ${domain}`)
+                return
+              }
+              
+              console.log(`[Telemetry] ⚠️ Non-whitelisted domain: ${domain} | Category: ${category}`)
+              
+              // Calculate and apply penalty (single penalty, not double!)
+              const penaltyResult = calculateDomainPenalty(
+                domain,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false // Not whitelisted
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${domain} (${penaltyResult.categoryName})`
+                )
+              }
+            },
+            onReturnToWhitelisted: (event) => {
+              const appName = event.appInfo?.appName || 'app'
+              console.log(`[Telemetry] ✅ Returned to whitelisted: ${appName}`)
+              
+              // Apply quick return bonus
+              const bonusResult = calculateBonus('quick_return', sessionMode)
+              bandwidthEngine.applyTelemetryBonus(
+                bonusResult.finalBonus,
+                `Returned to ${appName}`
+              )
+            },
+            onAnyEvent: (event) => {
+              console.log('[Telemetry] Event:', event.eventType)
+            },
+          })
+          telemetryCleanupRef.current = cleanup
+        } catch (telemetryError) {
+          console.error('[Telemetry] Failed to start monitor:', telemetryError)
+          // Continue without telemetry - app still works
+        }
+      }
     } catch (error) {
       console.error('Failed to start session:', error)
     }
@@ -252,6 +433,11 @@ function App() {
   const handleResumeSession = async () => {
     await sessionManager.resumeSession()
     setMode('session')
+    // Close any open panel (like reset ritual) when resuming
+    if (currentPanel === 'reset') {
+      setCurrentPanel(null)
+      sessionManager.addTimelineBlock('working')
+    }
   }
 
   const handleStopSession = () => {
@@ -265,6 +451,18 @@ function App() {
   ) => {
     setShowEndSessionModal(false)
     
+    // === TELEMETRY: Stop monitoring ===
+    try {
+      await tauriBridge.stopTelemetryMonitor()
+      if (telemetryCleanupRef.current) {
+        telemetryCleanupRef.current()
+        telemetryCleanupRef.current = null
+      }
+      console.log('[Telemetry] Monitor stopped')
+    } catch (telemetryError) {
+      console.error('[Telemetry] Failed to stop monitor:', telemetryError)
+    }
+
     const finalSession = await sessionManager.endSession(reason, subReason)
 
     if (finalSession) {
@@ -284,6 +482,18 @@ function App() {
   const handleEndSessionQuickExit = async () => {
     setShowEndSessionModal(false)
     
+    // === TELEMETRY: Stop monitoring ===
+    try {
+      await tauriBridge.stopTelemetryMonitor()
+      if (telemetryCleanupRef.current) {
+        telemetryCleanupRef.current()
+        telemetryCleanupRef.current = null
+      }
+      console.log('[Telemetry] Monitor stopped (quick exit)')
+    } catch (telemetryError) {
+      console.error('[Telemetry] Failed to stop monitor:', telemetryError)
+    }
+
     // Quick exit - end session without going through reflection flow
     await sessionManager.endSession('stopping_early', 'Quick exit')
     
@@ -306,23 +516,46 @@ function App() {
   }
 
   const handleResetComplete = (ritualType: RitualType) => {
-    console.log('Reset ritual selected:', ritualType)
+    // Called when ritual is SELECTED (not completed)
+    // NO bonus awarded here - wait for actual completion
+    console.log('Reset ritual started:', ritualType)
     sessionManager.recordIntervention(`reset-${ritualType}`)
     sessionManager.addTimelineBlock('reset')
-
-    // Apply bandwidth bonus based on ritual duration
-    const ritualDurations: Record<RitualType, number> = {
-      breath: 2,
-      walk: 5,
-      dump: 3,
-      personal: 4,
+  }
+  
+  const handleRitualComplete = (data: RitualCompletionData) => {
+    // Called when ritual ACTUALLY completes (or is skipped)
+    // Award points based on ACTUAL time spent (anti-cheat)
+    const actualMinutes = Math.floor(data.actualDuration / 60)
+    const plannedMinutes = Math.floor(data.plannedDuration / 60)
+    
+    console.log(`[Reset] Ritual complete:`, {
+      type: data.ritualType,
+      planned: `${plannedMinutes}min`,
+      actual: `${actualMinutes}min (${data.actualDuration}s)`,
+      skipped: data.wasSkipped,
+    })
+    
+    // Only award points for time actually spent
+    if (actualMinutes > 0) {
+      bandwidthEngine.applyResetBonus(actualMinutes)
+      console.log(`[Reset] Awarded ${actualMinutes * 2} points for ${actualMinutes} minutes`)
+    } else if (data.actualDuration >= 30) {
+      // At least 30 seconds = 1 point
+      bandwidthEngine.applyTelemetryBonus(1, `${data.ritualType} (partial)`)
+      console.log(`[Reset] Awarded 1 point for ${data.actualDuration}s`)
+    } else {
+      console.log(`[Reset] No points awarded - only ${data.actualDuration}s spent`)
     }
-    const minutes = ritualDurations[ritualType] || 2
-    bandwidthEngine.applyResetBonus(minutes)
   }
 
   const handleResetClose = () => {
-    if (mode === 'session' || mode === 'paused') {
+    // Resume session if it was paused for the reset ritual
+    if (mode === 'paused') {
+      sessionManager.resumeSession()
+      setMode('session')
+      sessionManager.addTimelineBlock('working')
+    } else if (mode === 'session') {
       sessionManager.addTimelineBlock('working')
     }
     setCurrentPanel(null)
@@ -347,7 +580,12 @@ function App() {
   // ============================================
 
   const handleOpenParkingLot = () => {
-    setCurrentPanel('parkingLot')
+    // Toggle parking lot panel
+    if (currentPanel === 'parkingLot') {
+      setCurrentPanel(null)
+    } else {
+      setCurrentPanel('parkingLot')
+    }
   }
 
   const handleParkingLotItemsChange = () => {
@@ -404,13 +642,31 @@ function App() {
   // ============================================
 
   if (mode === 'recovery' && recoveryData) {
+    // Resize window for recovery modal
+    resizeForPanel('recovery')
+    
+    // Handle dragging for recovery modal
+    const handleRecoveryDrag = async (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('button')) {
+        e.preventDefault()
+        const { startDragging } = await import('@/hooks/useTauriWindow')
+        await startDragging()
+      }
+    }
+    
     return (
-      <InterruptedSessionModalAdapter
-        isOpen={true}
-        recoveryData={recoveryData}
-        onResume={handleRecoveryResume}
-        onDiscard={handleRecoveryDiscard}
-      />
+      <div 
+        className="flex flex-col items-center p-4 cursor-grab active:cursor-grabbing"
+        onMouseDown={handleRecoveryDrag}
+      >
+        <InterruptedSessionModalAdapter
+          isOpen={true}
+          recoveryData={recoveryData}
+          onResume={handleRecoveryResume}
+          onDiscard={handleRecoveryDiscard}
+        />
+      </div>
     )
   }
 
@@ -425,9 +681,9 @@ function App() {
   // ============================================
 
   return (
-    <div className="w-full h-full bg-transparent">
-      {/* Main container */}
-      <div className="relative">
+    <div className="w-full min-h-full bg-transparent">
+      {/* Main container - flex column, centered */}
+      <div className="flex flex-col items-center">
 
         {/* FloatingHUD via Adapter - uses bandwidth engine values */}
         <HUDAdapter
@@ -501,6 +757,7 @@ function App() {
             isOpen={true}
             onClose={handleResetClose}
             onSelectRitual={handleResetComplete}
+            onRitualComplete={handleRitualComplete}
             sessionMode={sessionModeForHUD}
           />
         )}
@@ -539,17 +796,6 @@ function App() {
           />
         )}
 
-        {/* Debug overlay - remove in production */}
-        {import.meta.env.DEV && mode === 'session' && (
-          <div className="fixed bottom-2 right-2 text-xs text-zinc-500 bg-black/50 p-2 rounded font-mono">
-            <div>⚡ Bandwidth: {bandwidthEngine.current}</div>
-            <div>📈 Trend: {bandwidthEngine.trend}</div>
-            <div>🌊 Flow: {bandwidthEngine.isInFlow ? `Yes (${bandwidthEngine.flowDurationMinutes}m)` : 'No'}</div>
-            <div>⏱️ Elapsed: {timer.elapsedSeconds}s</div>
-            <div>⏳ Remaining: {timer.timeRemaining}s</div>
-            {timer.isOvertime && <div className="text-red-400">🚨 Overtime: +{timer.overtimeSeconds}s</div>}
-          </div>
-        )}
       </div>
     </div>
   )

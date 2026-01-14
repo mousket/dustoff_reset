@@ -5,12 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dustoff Reset</title>
     <style>
-      /* Critical: transparent background for Tauri window */
-      html, body, #root {
+      /* Critical: transparent background for Tauri window on macOS */
+      * {
+        box-sizing: border-box;
+      }
+      html {
         background: transparent !important;
+        background-color: transparent !important;
+      }
+      body {
+        background: transparent !important;
+        background-color: transparent !important;
         margin: 0;
         padding: 0;
+        min-height: 100vh;
         overflow: hidden;
+      }
+      #root {
+        background: transparent !important;
+        background-color: transparent !important;
+        min-height: 100vh;
       }
     </style>
   </head>

@@ -3,18 +3,21 @@
 
 import { tauriBridge } from '@/lib/tauri-bridge'
 
-// Panel dimensions from UI Architecture doc
+// Panel dimensions - increased for better content fit
+// Heights include HUD (80px) + margin (12px) + panel content
 export const PANEL_DIMENSIONS = {
   hudOnly: { width: 320, height: 80 },
-  calibration: { width: 700, height: 680 },
-  preSession: { width: 640, height: 560 },
-  reset: { width: 480, height: 440 },
-  parkingLot: { width: 500, height: 590 },
-  parkingLotHarvest: { width: 600, height: 690 },
-  postSessionSummary: { width: 550, height: 540 },
-  sessionReflection: { width: 520, height: 490 },
-  intervention: { width: 400, height: 200 },
-  flowCelebration: { width: 500, height: 240 },
+  calibration: { width: 420, height: 720 },      // Calibration ceremony
+  preSession: { width: 420, height: 700 },       // 6-step wizard needs more height
+  reset: { width: 520, height: 520 },            // Reset ritual selection
+  parkingLot: { width: 540, height: 640 },       // Parking lot management
+  parkingLotHarvest: { width: 640, height: 720 },// Harvest panel
+  postSessionSummary: { width: 640, height: 700 },// Session summary (increased)
+  sessionReflection: { width: 600, height: 640 },// Reflection questions (increased)
+  intervention: { width: 440, height: 280 },     // Intervention overlay
+  flowCelebration: { width: 540, height: 300 },  // Flow celebration
+  endSession: { width: 560, height: 680 },       // End session modal (taller for expanded sub-options)
+  recovery: { width: 520, height: 300 },         // Recovery modal (with padding for drag area)
 } as const
 
 export type PanelType = keyof typeof PANEL_DIMENSIONS

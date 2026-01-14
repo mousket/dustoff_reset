@@ -12,6 +12,19 @@ import type {
   RecoveryData,
   UserData,
 } from './tauri-types'
+import type { TelemetryEvent } from './telemetry'
+
+// Telemetry stats type (matching Rust SessionTelemetryStats)
+export interface SessionTelemetryStats {
+  appSwitches: number
+  nonWhitelistedSwitches: number
+  tabSwitches: number
+  nonWhitelistedDomains: number
+  timeInWhitelisted: number
+  timeInNonWhitelisted: number
+  appUsage: Record<string, number>
+  domainVisits: Record<string, number>
+}
 
 export const tauriBridge = {
   // ============================================
@@ -132,6 +145,82 @@ export const tauriBridge = {
 
   resetAllData: (): Promise<void> =>
     invoke('reset_all_data'),
+
+  // ============================================
+  // TELEMETRY
+  // ============================================
+
+  /**
+   * Start the telemetry monitor for a session
+   * This begins polling for active app changes every 2 seconds
+   */
+  startTelemetryMonitor: (
+    sessionId: string,
+    whitelistedApps: string[] = [],
+    whitelistedDomains: string[] = []
+  ): Promise<void> =>
+    invoke('start_telemetry_monitor', {
+      sessionId,
+      whitelistedApps,
+      whitelistedDomains,
+    }),
+
+  /**
+   * Stop the telemetry monitor
+   */
+  stopTelemetryMonitor: (): Promise<void> =>
+    invoke('stop_telemetry_monitor'),
+
+  /**
+   * Check if the telemetry monitor is running
+   */
+  isTelemetryRunning: (): Promise<boolean> =>
+    invoke('is_telemetry_running'),
+
+  /**
+   * Get telemetry events for a session
+   */
+  getTelemetryEvents: (sessionId: string): Promise<TelemetryEvent[]> =>
+    invoke('get_telemetry_events', { sessionId }),
+
+  /**
+   * Get telemetry stats for a session
+   */
+  getTelemetryStats: (sessionId: string): Promise<SessionTelemetryStats | null> =>
+    invoke('get_telemetry_stats', { sessionId }),
+
+  /**
+   * Save telemetry stats for a session
+   */
+  saveTelemetryStats: (sessionId: string, stats: SessionTelemetryStats): Promise<void> =>
+    invoke('save_telemetry_stats', { sessionId, stats }),
+
+  // ============================================
+  // APP DISCOVERY
+  // ============================================
+
+  /**
+   * Get list of installed applications on the system
+   */
+  getSystemApps: (): Promise<InstalledApp[]> =>
+    invoke('get_system_apps'),
+
+  /**
+   * Get list of installed browsers
+   */
+  getSystemBrowsers: (): Promise<InstalledApp[]> =>
+    invoke('get_system_browsers'),
+}
+
+/**
+ * Installed application info from the OS
+ */
+export interface InstalledApp {
+  name: string
+  identifier: string
+  path: string
+  category: string | null
+  isBrowser: boolean
 }
 
 // Re-export types for convenience

@@ -54,7 +54,7 @@ export function ParkingLotPanelAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={500}>
+    <PanelContainer isOpen={isOpen}>
       <ParkingLotManagementPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         onClose={onClose}

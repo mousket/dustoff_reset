@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+use crate::telemetry::persistence::init_telemetry_tables;
 
 #[allow(dead_code)]
 const CURRENT_SCHEMA_VERSION: i32 = 1;
@@ -63,6 +64,9 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
     if current_version < 1 {
         migrate_v1(conn)?;
     }
+
+    // Initialize telemetry tables (idempotent - uses CREATE IF NOT EXISTS)
+    init_telemetry_tables(conn)?;
 
     // Future migrations would go here:
     // if current_version < 2 {

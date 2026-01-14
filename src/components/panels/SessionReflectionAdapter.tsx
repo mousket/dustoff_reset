@@ -81,7 +81,7 @@ export function SessionReflectionAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={520}>
+    <PanelContainer isOpen={isOpen}>
       <SessionReflectionPanel
         session={panelSession}
         onSave={handleSave}

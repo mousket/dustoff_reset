@@ -1,11 +1,15 @@
 
-import { useState, useEffect } from "react"
-import type { ResetPanelProps, RitualType, RitualOption } from "./types"
+import { useState, useEffect, useRef } from "react"
+import type { ResetPanelProps, RitualType, RitualOption, RitualCompletionData } from "./types"
 import { TimerHalo } from "@/components/animations/TimerHalo"
 
-export function ResetPanel({ isOpen, onClose, onSelectRitual, sessionMode = "Zen" }: ResetPanelProps) {
+export function ResetPanel({ isOpen, onClose, onSelectRitual, onRitualComplete, sessionMode = "Zen" }: ResetPanelProps) {
   const [activeRitual, setActiveRitual] = useState<RitualType | null>(null)
   const [timeRemaining, setTimeRemaining] = useState(0)
+  
+  // Track actual time spent for anti-cheat
+  const ritualStartTime = useRef<number | null>(null)
+  const plannedDuration = useRef<number>(0)
 
   const ritualOptions: RitualOption[] = [
     {
@@ -39,7 +43,20 @@ export function ResetPanel({ isOpen, onClose, onSelectRitual, sessionMode = "Zen
       const interval = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev <= 1) {
+            // Ritual completed naturally - award full points
+            const actualSeconds = ritualStartTime.current 
+              ? Math.floor((Date.now() - ritualStartTime.current) / 1000)
+              : plannedDuration.current
+            
+            onRitualComplete?.({
+              ritualType: activeRitual,
+              plannedDuration: plannedDuration.current,
+              actualDuration: actualSeconds,
+              wasSkipped: false,
+            })
+            
             setActiveRitual(null)
+            ritualStartTime.current = null
             onClose()
             return 0
           }
@@ -48,17 +65,37 @@ export function ResetPanel({ isOpen, onClose, onSelectRitual, sessionMode = "Zen
       }, 1000)
       return () => clearInterval(interval)
     }
-  }, [activeRitual, timeRemaining, onClose])
+  }, [activeRitual, timeRemaining, onClose, onRitualComplete])
 
   const handleSelectRitual = (ritual: RitualOption) => {
+    // Start tracking actual time
+    ritualStartTime.current = Date.now()
+    plannedDuration.current = ritual.duration
+    
     setActiveRitual(ritual.id)
     setTimeRemaining(ritual.duration)
-    onSelectRitual(ritual.id)
+    onSelectRitual(ritual.id) // Notify that ritual started (no bonus yet!)
   }
 
   const handleSkipRitual = () => {
+    // Calculate actual time spent before skipping
+    const actualSeconds = ritualStartTime.current 
+      ? Math.floor((Date.now() - ritualStartTime.current) / 1000)
+      : 0
+    
+    // Only award points for time actually spent
+    if (activeRitual && actualSeconds > 0) {
+      onRitualComplete?.({
+        ritualType: activeRitual,
+        plannedDuration: plannedDuration.current,
+        actualDuration: actualSeconds,
+        wasSkipped: true,
+      })
+    }
+    
     setActiveRitual(null)
     setTimeRemaining(0)
+    ritualStartTime.current = null
     onClose()
   }
 

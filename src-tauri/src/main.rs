@@ -4,6 +4,7 @@
 mod commands;
 mod models;
 mod storage;
+mod telemetry;
 
 use std::sync::Mutex;
 use storage::init_database;
@@ -11,6 +12,9 @@ use tauri::Manager;
 
 // Import AppState from the library crate
 use dustoff_reset_lib::AppState;
+
+// Import TelemetryState for managing telemetry
+use commands::telemetry::TelemetryState;
 
 fn main() {
     tauri::Builder::default()
@@ -23,6 +27,27 @@ fn main() {
             app.manage(AppState {
                 db: Mutex::new(conn),
             });
+
+            // Initialize telemetry state
+            app.manage(TelemetryState::new());
+
+            // Ensure window is fully transparent on macOS
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    // Disable window shadow for cleaner transparent look
+                    let _ = window.set_shadow(false);
+                    
+                    // Inject script to ensure transparent background
+                    let _ = window.eval(r#"
+                        document.documentElement.style.background = 'transparent';
+                        document.body.style.background = 'transparent';
+                        if (document.getElementById('root')) {
+                            document.getElementById('root').style.background = 'transparent';
+                        }
+                    "#);
+                }
+            }
 
             println!("Dustoff Reset initialized successfully");
             Ok(())
@@ -56,6 +81,15 @@ fn main() {
             commands::data::get_workday_date,
             commands::data::generate_uuid,
             commands::data::reset_all_data,
+            // Telemetry commands
+            commands::telemetry::start_telemetry_monitor,
+            commands::telemetry::stop_telemetry_monitor,
+            commands::telemetry::is_telemetry_running,
+            commands::telemetry::get_telemetry_events,
+            commands::telemetry::get_telemetry_stats,
+            commands::telemetry::save_telemetry_stats,
+            commands::telemetry::get_system_apps,
+            commands::telemetry::get_system_browsers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

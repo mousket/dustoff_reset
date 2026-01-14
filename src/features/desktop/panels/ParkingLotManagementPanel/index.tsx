@@ -10,6 +10,7 @@ import {
 } from "@/lib/parking-lot-storage"
 import { updateParkingLotItemStatus } from "@/lib/parking-lot-storage"
 import type { ParkingLotManagementPanelProps } from "./types"
+import { EmeraldStatusSelect } from "@/components/ui/EmeraldSelect"
 
 export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: ParkingLotManagementPanelProps) {
   const [items, setItems] = useState<ParkingLotItemFull[]>([])
@@ -69,17 +70,6 @@ export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: Pa
     if (onItemsChange) onItemsChange()
   }
 
-  const getStatusColor = (status?: "new" | "in-progress" | "done") => {
-    switch (status) {
-      case "in-progress":
-        return "text-cyan-400"
-      case "done":
-        return "text-emerald-400"
-      default:
-        return "text-zinc-400"
-    }
-  }
-
   return (
     <div className="w-[380px] rounded-3xl bg-[#0a0f0d]/55 backdrop-blur-xl border border-emerald-500/30 shadow-2xl overflow-hidden">
       <div className="p-5 space-y-4">
@@ -120,15 +110,15 @@ export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: Pa
                   className="group flex items-start gap-2 px-3 py-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg hover:bg-zinc-900/60 transition-all"
                 >
                   {/* Status Dropdown */}
-                  <select
+                  <EmeraldStatusSelect
                     value={item.itemStatus || "new"}
-                    onChange={(e) => handleStatusChange(item.id, e.target.value as "new" | "in-progress" | "done")}
-                    className={`text-xs px-2 py-1 rounded bg-zinc-800/60 border border-zinc-700/50 ${getStatusColor(item.itemStatus)} focus:outline-none focus:border-emerald-500/50 cursor-pointer transition-colors`}
-                  >
-                    <option value="new">New</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="done">Done</option>
-                  </select>
+                    onChange={(val) => handleStatusChange(item.id, val as "new" | "in-progress" | "done")}
+                    options={[
+                      { value: "new", label: "New" },
+                      { value: "in-progress", label: "In Progress" },
+                      { value: "done", label: "Done" },
+                    ]}
+                  />
 
                   {/* Item Text */}
                   <div className="flex-1 min-w-0">

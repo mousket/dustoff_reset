@@ -27,6 +27,8 @@ interface BandwidthActions {
   applyResetBonus: (minutes: number) => void
   applyDistractionPenalty: () => void
   applyFocusBonus: () => void
+  applyTelemetryPenalty: (penalty: number, reason?: string) => void
+  applyTelemetryBonus: (bonus: number, reason?: string) => void
   resetEngine: () => void
 }
 
@@ -40,8 +42,8 @@ const DECAY_RATES = {
 // Bonus/penalty amounts
 const CONTEXT_SWITCH_PENALTY = 5     // Points lost per context switch
 const DISTRACTION_PENALTY = 8        // Points lost per recorded distraction
-const FOCUS_BONUS = 2                // Points gained per 5 min of focus
-const RESET_BONUS_PER_MINUTE = 3     // Points gained per minute of reset ritual
+const FOCUS_BONUS = 1                // Points gained per 5 min of focus (halved)
+const RESET_BONUS_PER_MINUTE = 2     // Points gained per minute of reset ritual (~6 for 3min walk)
 
 // Intervention thresholds
 const FRICTION_THRESHOLD = 60        // Show subtle nudge
@@ -293,6 +295,37 @@ export function useBandwidthEngine({
   }, [])
   
   /**
+   * Apply penalty from telemetry system (app/domain switches)
+   * @param penalty - The penalty value (should be negative)
+   * @param reason - Optional reason for logging
+   */
+  const applyTelemetryPenalty = useCallback((penalty: number, reason?: string) => {
+    if (penalty >= 0) return // Only apply actual penalties
+    
+    setBandwidth(prev => {
+      const newBandwidth = Math.max(0, prev + penalty)
+      console.log(`[BandwidthEngine] Telemetry penalty: ${penalty} (${reason || 'unknown'}) | ${Math.round(prev)} → ${Math.round(newBandwidth)}`)
+      return newBandwidth
+    })
+    setContextSwitches(prev => prev + 1)
+  }, [])
+  
+  /**
+   * Apply bonus from telemetry system (returning to work, etc.)
+   * @param bonus - The bonus value (should be positive)
+   * @param reason - Optional reason for logging
+   */
+  const applyTelemetryBonus = useCallback((bonus: number, reason?: string) => {
+    if (bonus <= 0) return // Only apply actual bonuses
+    
+    setBandwidth(prev => {
+      const newBandwidth = Math.min(100, prev + bonus)
+      console.log(`[BandwidthEngine] Telemetry bonus: +${bonus} (${reason || 'unknown'}) | ${Math.round(prev)} → ${Math.round(newBandwidth)}`)
+      return newBandwidth
+    })
+  }, [])
+  
+  /**
    * Reset the engine to initial state
    */
   const resetEngine = useCallback(() => {
@@ -324,6 +357,8 @@ export function useBandwidthEngine({
     applyResetBonus,
     applyDistractionPenalty,
     applyFocusBonus,
+    applyTelemetryPenalty,
+    applyTelemetryBonus,
     resetEngine,
   }
 }

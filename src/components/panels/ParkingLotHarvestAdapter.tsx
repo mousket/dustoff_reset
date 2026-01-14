@@ -103,7 +103,7 @@ export function ParkingLotHarvestAdapter({
   }
   
   return (
-    <PanelContainer isOpen={isOpen} width={600}>
+    <PanelContainer isOpen={isOpen}>
       <ParkingLotHarvestPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         items={items}

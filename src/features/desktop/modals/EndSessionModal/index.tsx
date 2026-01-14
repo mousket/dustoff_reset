@@ -26,10 +26,14 @@ export function EndSessionModal({ isOpen, onContinue, onQuickExit, onCancel }: E
     }
   }
 
+  // Check if a sub-reason panel is open
+  const hasSubReasonOpen = selectedReason === "stopping_early" || selectedReason === "pulled_away"
+
   return (
-    <div className="w-[525px] rounded-3xl bg-[#0a0f0d]/55 backdrop-blur-xl border border-emerald-500/30 shadow-2xl overflow-hidden">
-      <div className="p-6">
-        <div className="flex justify-between items-start mb-6">
+    <div className="w-[525px] rounded-3xl bg-[#0a0f0d]/90 backdrop-blur-xl border border-emerald-500/30 shadow-2xl flex flex-col max-h-[85vh]">
+      {/* Header - Fixed */}
+      <div className="p-6 pb-4 flex-shrink-0">
+        <div className="flex justify-between items-start">
           <div>
             <h2 className="text-xl font-light text-emerald-400">End Session</h2>
             <p className="text-sm text-zinc-400 mt-1">Take a moment to tell us what's happening.</p>
@@ -38,8 +42,11 @@ export function EndSessionModal({ isOpen, onContinue, onQuickExit, onCancel }: E
             <X className="w-5 h-5" />
           </button>
         </div>
+      </div>
 
-        <div className="space-y-4 mb-6">
+      {/* Scrollable Options */}
+      <div className="flex-1 overflow-y-auto px-6 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+        <div className="space-y-4">
           <div
             onClick={() => {
               setSelectedReason("completed")
@@ -151,7 +158,10 @@ export function EndSessionModal({ isOpen, onContinue, onQuickExit, onCancel }: E
             )}
           </div>
         </div>
+      </div>
 
+      {/* Footer - Fixed at bottom, always visible */}
+      <div className="p-6 pt-4 flex-shrink-0 border-t border-zinc-800/50">
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -167,7 +177,7 @@ export function EndSessionModal({ isOpen, onContinue, onQuickExit, onCancel }: E
           </button>
           <button
             onClick={handleContinue}
-            disabled={!selectedReason}
+            disabled={!selectedReason || (hasSubReasonOpen && !selectedSubReason)}
             className="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-light"
           >
             Continue

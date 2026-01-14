@@ -58,8 +58,9 @@ export function EndSessionModalAdapter({
     onEndSession(mappedReason, subReason)
   }
 
+  // Render modal directly without fixed overlay (Tauri window handles positioning)
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <EndSessionModal
         isOpen={isOpen}
         onContinue={handleContinue}

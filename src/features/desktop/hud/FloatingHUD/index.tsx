@@ -17,6 +17,7 @@ export function FloatingHUD({
   onResumeSession,
   onStopSession,
   onOpenParkingLot,
+  onReset,
 }: FloatingHUDProps) {
   const bandwidthValue = bandwidthScore ?? 0
   const bandwidthColor = getBandwidthColor(bandwidthScore)
@@ -25,74 +26,12 @@ export function FloatingHUD({
 
   return (
     <div
-      className="relative"
+      className="relative overflow-visible"
       style={{
         width: "320px",
         height: "60px",
       }}
     >
-      {isInFlow && (
-        <div className="absolute inset-0 pointer-events-none" style={{ width: "320px", height: "60px" }}>
-          {[...Array(24)].map((_, i) => {
-            const angle = (i * 360) / 24
-            const radius = 50
-            const x = radius * Math.cos((angle * Math.PI) / 180)
-            const y = radius * Math.sin((angle * Math.PI) / 180)
-            const size = 3 + (i % 3)
-
-            return (
-              <div
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: `calc(50% + ${x}px)`,
-                  top: `calc(50% + ${y}px)`,
-                  width: `${size}px`,
-                  height: `${size}px`,
-                  backgroundColor: "#10b981",
-                  boxShadow: `0 0 ${size * 3}px ${size}px rgba(16, 185, 129, 0.6)`,
-                  animation: `orbit ${8 + i * 0.3}s linear infinite, particleGlow ${2 + (i % 3) * 0.5}s ease-in-out infinite`,
-                  animationDelay: `${-i * 0.3}s`,
-                  transformOrigin: `${-x}px ${-y}px`,
-                }}
-              />
-            )
-          })}
-
-          {[...Array(16)].map((_, i) => {
-            const angle = (i * 360) / 16
-            const radius = 35
-            const x = radius * Math.cos((angle * Math.PI) / 180)
-            const y = radius * Math.sin((angle * Math.PI) / 180)
-
-            return (
-              <div
-                key={`inner-${i}`}
-                className="absolute rounded-full"
-                style={{
-                  left: `calc(50% + ${x}px)`,
-                  top: `calc(50% + ${y}px)`,
-                  width: "4px",
-                  height: "4px",
-                  backgroundColor: "#34d399",
-                  boxShadow: "0 0 12px 4px rgba(52, 211, 153, 0.8)",
-                  animation: `orbit ${5 + i * 0.2}s linear infinite reverse, particleGlow ${1.5 + (i % 2) * 0.3}s ease-in-out infinite`,
-                  animationDelay: `${-i * 0.2}s`,
-                  transformOrigin: `${-x}px ${-y}px`,
-                }}
-              />
-            )
-          })}
-
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              boxShadow: "0 0 40px 8px rgba(16, 185, 129, 0.4), 0 0 80px 16px rgba(16, 185, 129, 0.2)",
-              animation: "flowPulse 2s ease-in-out infinite",
-            }}
-          />
-        </div>
-      )}
 
       <div
         className="relative w-full h-full rounded-full bg-[#0a0f0d]/90 backdrop-blur-xl border shadow-2xl overflow-hidden transition-all duration-500"
@@ -237,19 +176,23 @@ export function FloatingHUD({
             </button>
           )}
 
+          {/* Pause button - pauses session AND opens reset ritual */}
           {mode === "session" && onPauseSession && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 onPauseSession()
+                // Also open reset ritual panel
+                if (onReset) onReset()
               }}
-              className="w-8 h-8 rounded-full bg-zinc-800/80 hover:bg-zinc-700 flex items-center justify-center text-zinc-300 text-xs transition-colors"
-              title="Pause Session"
+              className="w-8 h-8 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs transition-colors"
+              title="Pause & Reset"
             >
               ⏸
             </button>
           )}
 
+          {/* Resume button when paused */}
           {mode === "paused" && onResumeSession && (
             <button
               onClick={(e) => {

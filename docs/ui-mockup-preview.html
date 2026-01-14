@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dustoff Reset - App Picker UI Mockups</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0a0f0d 0%, #141c19 50%, #0a0f0d 100%);
+      min-height: 100vh;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .glass-panel {
+      background: rgba(20, 28, 25, 0.8);
+      backdrop-filter: blur(20px);
+    }
+    .emerald-glow {
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    }
+    .emerald-glow-strong {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.25), inset 0 1px 0 rgba(16, 185, 129, 0.1);
+    }
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    .animate-pulse-subtle {
+      animation: pulse-subtle 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="p-8">
+  <h1 class="text-3xl font-bold text-emerald-400 mb-2 text-center">Dustoff Reset - App Picker Mockups</h1>
+  <p class="text-zinc-400 text-center mb-8">Click on apps to see the selection effect</p>
+  
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+    
+    <!-- Option 1: Minimal Glass -->
+    <div class="space-y-4">
+      <h2 class="text-lg font-semibold text-white text-center">Option 1: Minimal Glass</h2>
+      <p class="text-xs text-zinc-500 text-center">Ultra-clean, barely there</p>
+      
+      <div class="rounded-2xl bg-black/30 backdrop-blur-xl p-5 border border-white/5">
+        <label class="block text-sm font-medium text-zinc-300 mb-3">Whitelisted Applications</label>
+        
+        <!-- Search Input -->
+        <div class="relative mb-4">
+          <input 
+            type="text" 
+            placeholder="Search apps..."
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-zinc-500 focus:border-white/20 focus:outline-none transition-all text-sm"
+          />
+          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </div>
+        
+        <!-- Dropdown -->
+        <div class="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden mb-4">
+          <div class="px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors flex items-center justify-between border-b border-white/5">
+            <span class="text-white text-sm">VS Code</span>
+            <span class="text-emerald-400">✓</span>
+          </div>
+          <div class="px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/5">
+            <span class="text-zinc-300 text-sm">Google Chrome</span>
+          </div>
+          <div class="px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/5">
+            <span class="text-zinc-300 text-sm">Figma</span>
+          </div>
+          <div class="px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors">
+            <span class="text-zinc-300 text-sm">Slack</span>
+          </div>
+        </div>
+        
+        <!-- Selected Pills -->
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1.5 bg-white/5 border border-white/10 text-zinc-300 text-xs rounded-full flex items-center gap-2">
+            VS Code
+            <button class="hover:text-white">×</button>
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Option 2: Emerald Contour (Recommended) -->
+    <div class="space-y-4">
+      <h2 class="text-lg font-semibold text-emerald-400 text-center">Option 2: Emerald Contour ⭐</h2>
+      <p class="text-xs text-emerald-500/60 text-center">Recommended - On brand</p>
+      
+      <div class="rounded-2xl glass-panel p-5 border border-emerald-500/20 emerald-glow">
+        <label class="block text-sm font-medium text-zinc-200 mb-3">Whitelisted Applications</label>
+        
+        <!-- Search Input with emerald accent -->
+        <div class="relative mb-4">
+          <div class="absolute left-3 top-1/2 -translate-y-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-pulse-subtle"></div>
+          <input 
+            type="text" 
+            placeholder="Search installed apps..."
+            class="w-full pl-8 pr-10 py-2.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-white placeholder:text-zinc-500 focus:border-emerald-500/60 focus:bg-emerald-500/10 focus:outline-none transition-all text-sm"
+          />
+          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </div>
+        
+        <!-- Dropdown with emerald styling -->
+        <div class="bg-black/60 backdrop-blur-xl border border-emerald-500/20 rounded-xl overflow-hidden mb-4 shadow-lg shadow-emerald-500/5">
+          <div class="px-4 py-3 bg-emerald-500/10 cursor-pointer transition-colors flex items-center justify-between border-b border-emerald-500/10">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 bg-blue-500/20 rounded-lg flex items-center justify-center text-xs">⌘</span>
+              <div>
+                <span class="text-white text-sm block">VS Code</span>
+                <span class="text-zinc-500 text-xs">code editor</span>
+              </div>
+            </div>
+            <span class="text-emerald-400 text-lg">✓</span>
+          </div>
+          <div class="px-4 py-3 hover:bg-emerald-500/5 cursor-pointer transition-colors border-b border-dashed border-emerald-500/10">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 bg-orange-500/20 rounded-lg flex items-center justify-center text-xs">🌐</span>
+              <div>
+                <span class="text-zinc-200 text-sm block">Google Chrome</span>
+                <span class="text-zinc-500 text-xs">browser</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-3 hover:bg-emerald-500/5 cursor-pointer transition-colors border-b border-dashed border-emerald-500/10">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 bg-purple-500/20 rounded-lg flex items-center justify-center text-xs">◆</span>
+              <div>
+                <span class="text-zinc-200 text-sm block">Figma</span>
+                <span class="text-zinc-500 text-xs">design tool</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-3 hover:bg-emerald-500/5 cursor-pointer transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 bg-pink-500/20 rounded-lg flex items-center justify-center text-xs">#</span>
+              <div>
+                <span class="text-zinc-200 text-sm block">Slack</span>
+                <span class="text-zinc-500 text-xs">communication</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Selected Chips with emerald border -->
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs rounded-full flex items-center gap-2 emerald-glow">
+            <span class="w-4 h-4 bg-blue-500/30 rounded flex items-center justify-center text-[10px]">⌘</span>
+            VS Code
+            <button class="hover:text-emerald-100 text-emerald-400/60">×</button>
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Option 3: Floating Cards -->
+    <div class="space-y-4">
+      <h2 class="text-lg font-semibold text-white text-center">Option 3: Floating Cards</h2>
+      <p class="text-xs text-zinc-500 text-center">Visual grid selection</p>
+      
+      <div class="rounded-2xl bg-zinc-900/50 backdrop-blur-xl p-5 border border-zinc-700/50">
+        <label class="block text-sm font-medium text-zinc-300 mb-3">Which apps will you use?</label>
+        
+        <!-- Grid of app cards -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <!-- Selected Card -->
+          <div class="aspect-square rounded-xl bg-emerald-500/10 border-2 border-emerald-500/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 transition-all group">
+            <span class="w-8 h-8 bg-blue-500/30 rounded-lg flex items-center justify-center text-sm mb-2">⌘</span>
+            <span class="text-white text-xs text-center">VS Code</span>
+            <span class="text-emerald-400 text-lg mt-1">✓</span>
+          </div>
+          
+          <!-- Unselected Cards -->
+          <div class="aspect-square rounded-xl bg-zinc-800/30 border border-zinc-700/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-zinc-600 hover:bg-zinc-800/50 transition-all">
+            <span class="w-8 h-8 bg-orange-500/20 rounded-lg flex items-center justify-center text-sm mb-2">🌐</span>
+            <span class="text-zinc-400 text-xs text-center">Chrome</span>
+          </div>
+          
+          <div class="aspect-square rounded-xl bg-zinc-800/30 border border-zinc-700/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-zinc-600 hover:bg-zinc-800/50 transition-all">
+            <span class="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center text-sm mb-2">◆</span>
+            <span class="text-zinc-400 text-xs text-center">Figma</span>
+          </div>
+          
+          <div class="aspect-square rounded-xl bg-zinc-800/30 border border-zinc-700/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-zinc-600 hover:bg-zinc-800/50 transition-all">
+            <span class="w-8 h-8 bg-pink-500/20 rounded-lg flex items-center justify-center text-sm mb-2">#</span>
+            <span class="text-zinc-400 text-xs text-center">Slack</span>
+          </div>
+          
+          <div class="aspect-square rounded-xl bg-zinc-800/30 border border-zinc-700/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-zinc-600 hover:bg-zinc-800/50 transition-all">
+            <span class="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center text-sm mb-2">📝</span>
+            <span class="text-zinc-400 text-xs text-center">Notion</span>
+          </div>
+          
+          <!-- Add more button -->
+          <div class="aspect-square rounded-xl border border-dashed border-zinc-700/50 p-3 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all">
+            <span class="text-zinc-600 text-2xl mb-1">+</span>
+            <span class="text-zinc-500 text-xs">Add</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+  
+  <!-- Browser/Tab Section Preview -->
+  <div class="max-w-2xl mx-auto mt-12">
+    <h2 class="text-xl font-semibold text-white text-center mb-6">Browser & Tab Picker (Option 2 Style)</h2>
+    
+    <div class="rounded-2xl glass-panel p-5 border border-emerald-500/20 emerald-glow">
+      <label class="block text-sm font-medium text-zinc-200 mb-3">Browser Selection</label>
+      
+      <!-- Browser Selector -->
+      <div class="flex gap-2 mb-6">
+        <button class="flex-1 px-4 py-3 bg-emerald-500/10 border-2 border-emerald-500/50 rounded-xl text-emerald-300 text-sm font-medium transition-all">
+          🌐 Chrome
+        </button>
+        <button class="flex-1 px-4 py-3 bg-zinc-800/30 border border-zinc-700/50 rounded-xl text-zinc-400 text-sm font-medium hover:border-zinc-600 transition-all">
+          🧭 Safari
+        </button>
+        <button class="flex-1 px-4 py-3 bg-zinc-800/30 border border-zinc-700/50 rounded-xl text-zinc-400 text-sm font-medium hover:border-zinc-600 transition-all">
+          🦊 Firefox
+        </button>
+      </div>
+      
+      <label class="block text-sm font-medium text-zinc-200 mb-3">Allowed Domains</label>
+      <p class="text-xs text-zinc-500 mb-3">Enter domains - we'll match any URL containing them</p>
+      
+      <!-- Domain Input -->
+      <div class="space-y-2 mb-4">
+        <div class="relative">
+          <input 
+            type="text" 
+            value="gemini.google.com"
+            class="w-full px-4 py-2.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-emerald-300 placeholder:text-zinc-500 focus:border-emerald-500/60 focus:outline-none transition-all text-sm"
+          />
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500/60 text-xs">✓ will match /app/...</span>
+        </div>
+        <div class="relative">
+          <input 
+            type="text" 
+            value="docs.google.com"
+            class="w-full px-4 py-2.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-emerald-300 placeholder:text-zinc-500 focus:border-emerald-500/60 focus:outline-none transition-all text-sm"
+          />
+        </div>
+        <div class="relative">
+          <input 
+            type="text" 
+            placeholder="Add another domain..."
+            class="w-full px-4 py-2.5 bg-black/20 border border-zinc-700/50 rounded-xl text-white placeholder:text-zinc-600 focus:border-emerald-500/30 focus:bg-emerald-500/5 focus:outline-none transition-all text-sm"
+          />
+        </div>
+      </div>
+      
+      <!-- Example matching -->
+      <div class="bg-black/30 rounded-xl p-4 border border-zinc-800">
+        <p class="text-xs text-zinc-500 mb-2">Example: <span class="text-emerald-400">gemini.google.com</span> will allow:</p>
+        <ul class="text-xs text-zinc-400 space-y-1">
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-400">✓</span>
+            https://gemini.google.com/app/6ac0a7620c5916fc
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-emerald-400">✓</span>
+            https://gemini.google.com/chat/new
+          </li>
+          <li class="flex items-center gap-2">
+            <span class="text-red-400">✗</span>
+            https://google.com/search?q=gemini
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <p class="text-center text-zinc-600 text-sm mt-8">Open this file in your browser: docs/ui-mockup-preview.html</p>
+</body>
+</html>

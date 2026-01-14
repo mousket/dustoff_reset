@@ -59,15 +59,15 @@ export function TimerHalo({
       className={`relative flex items-center justify-center ${className}`}
       style={{ width: size, height: size }}
     >
-      {/* Background ring */}
+      {/* Background ring - pointer-events-none to prevent click interference */}
       <div 
-        className={`absolute inset-0 rounded-full border-4 border-zinc-800 ${colors.bg}`}
+        className={`absolute inset-0 rounded-full border-4 border-zinc-800 ${colors.bg} pointer-events-none`}
       />
       
-      {/* Progress ring (SVG) */}
+      {/* Progress ring (SVG) - pointer-events-none to prevent click interference */}
       {variant === 'pulse-ring' && (
         <svg 
-          className="absolute inset-0 -rotate-90"
+          className="absolute inset-0 -rotate-90 pointer-events-none"
           style={{ width: size, height: size }}
         >
           <circle
@@ -88,17 +88,17 @@ export function TimerHalo({
         </svg>
       )}
       
-      {/* Glow effect */}
+      {/* Glow effect - pointer-events-none to prevent click interference */}
       {variant === 'glow' && (
         <div 
-          className={`absolute inset-2 rounded-full blur-xl ${colors.bg} animate-pulse`}
+          className={`absolute inset-2 rounded-full blur-xl ${colors.bg} animate-pulse pointer-events-none`}
         />
       )}
       
-      {/* Pulse animation for pulse-ring */}
+      {/* Pulse animation for pulse-ring - pointer-events-none to prevent click interference */}
       {variant === 'pulse-ring' && (
         <div 
-          className={`absolute inset-0 rounded-full border-2 ${colors.ring} opacity-30 animate-ping`}
+          className={`absolute inset-0 rounded-full border-2 ${colors.ring} opacity-30 animate-ping pointer-events-none`}
           style={{ animationDuration: '2s' }}
         />
       )}

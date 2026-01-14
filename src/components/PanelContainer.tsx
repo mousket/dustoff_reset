@@ -1,46 +1,50 @@
 // src/components/PanelContainer.tsx
-// Wraps any panel with consistent styling and animation
-// Matches the panel styling from docs/specs/14_ui_architecture.md
+// Handles ONLY positioning and animation for panels
+// The actual panel components provide their own glassmorphism styling
 
 import { ReactNode } from 'react'
 
 interface PanelContainerProps {
   children: ReactNode
   isOpen: boolean
-  width?: number  // pixels
   className?: string
 }
 
+/**
+ * PanelContainer
+ * 
+ * A minimal wrapper that ONLY handles:
+ * - Visibility (isOpen)
+ * - Margin from HUD (mt-3)
+ * - Entry animation
+ * 
+ * It does NOT add:
+ * - Background
+ * - Border
+ * - Shadow
+ * - Border radius
+ * 
+ * Those are the responsibility of the child panel component.
+ */
 export function PanelContainer({ 
   children, 
   isOpen,
-  width = 600,
   className = '',
 }: PanelContainerProps) {
   if (!isOpen) return null
   
   return (
-    <div className="mt-3">
-      <div 
-        className={`
-          rounded-3xl 
-          bg-[#0a0f0d]/95 
-          backdrop-blur-xl 
-          border 
-          border-[#2f4a42]/40 
-          shadow-2xl 
-          overflow-hidden
-          transition-all 
-          duration-300
-          animate-in
-          fade-in
-          slide-in-from-bottom-2
-          ${className}
-        `}
-        style={{ width: `${width}px` }}
-      >
-        {children}
-      </div>
+    <div 
+      className={`
+        mt-3
+        animate-in
+        fade-in
+        slide-in-from-bottom-2
+        duration-300
+        ${className}
+      `}
+    >
+      {children}
     </div>
   )
 }

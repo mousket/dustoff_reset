@@ -22,8 +22,8 @@ export function InterruptedSessionModal({
   const durationText = duration ? `${duration} minute${duration !== 1 ? "s" : ""}` : null
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 rounded-2xl bg-[#0a0f0d]/95 backdrop-blur-xl border border-amber-500/30 shadow-2xl p-6 space-y-4">
+    <div className="flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-2xl bg-[#0a0f0d]/95 backdrop-blur-xl border border-amber-500/30 shadow-2xl p-6 space-y-4">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-amber-500/20 rounded-lg">
             <AlertTriangle className="w-5 h-5 text-amber-400" />
