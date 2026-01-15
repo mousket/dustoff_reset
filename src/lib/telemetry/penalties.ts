@@ -8,26 +8,26 @@
 export const BASE_PENALTIES = {
   // App switches by category
   app_switch_productive: 0,        // No penalty for productive apps
-  app_switch_neutral: -2,          // Minor penalty
-  app_switch_communication: -4,    // Moderate penalty
-  app_switch_social_media: -8,     // Significant penalty
-  app_switch_entertainment: -10,   // Heavy penalty
-  app_switch_gaming: -12,          // Heaviest penalty
-  app_switch_unknown: -3,          // Unknown apps get moderate penalty
-  app_switch_non_whitelist: -5,    // Not on whitelist
+  app_switch_neutral: -1,          // Minor penalty
+  app_switch_communication: -2,    // Moderate penalty
+  app_switch_social_media: -4,     // Significant penalty
+  app_switch_entertainment: -7,   // Heavy penalty
+  app_switch_gaming: -8,          // Heaviest penalty
+  app_switch_unknown: -2,          // Unknown apps get moderate penalty
+  app_switch_non_whitelist: -3,    // Not on whitelist
   
   // Block attempts (Legend mode)
-  block_attempt: -10,              // Tried to open blocked app
-  repeated_block_attempt: -15,     // Tried again
-  bypass_attempt: -20,             // Tried to circumvent blocking
+  block_attempt: -8,              // Tried to open blocked app
+  repeated_block_attempt: -10,     // Tried again
+  bypass_attempt: -12,             // Tried to circumvent blocking
   
   // Rapid switching
   rapid_switch: -3,                // 3rd+ switch in 2 minutes
   
   // Domain penalties
-  domain_social_media: -8,         // Visited social media domain
-  domain_entertainment: -10,       // Visited entertainment domain
-  domain_non_whitelist: -5,        // Domain not on whitelist
+  domain_social_media: -6,         // Visited social media domain
+  domain_entertainment: -8,       // Visited entertainment domain
+  domain_non_whitelist: -3,        // Domain not on whitelist
 } as const
 
 /**
@@ -37,21 +37,21 @@ export const BASE_PENALTIES = {
  */
 export const BASE_BONUSES = {
   // Intervention responses
-  delay_gate_returned: 2,          // Chose to return from delay gate
-  block_accepted: 1,               // Accepted block without rage
-  quick_return: 1,                 // Returned to work < 10 seconds
+  delay_gate_returned: 3,          // Chose to return from delay gate
+  block_accepted: 2,               // Accepted block without rage
+  quick_return: 2,                 // Returned to work < 10 seconds
   temptation_resisted: 2,          // Hovered but didn't click
   
   // Self-correction
   self_close_distraction: 1,       // Closed distraction app yourself
   
   // Focus bonuses
-  focus_streak_5min: 1,            // 5 minutes of focused work
-  focus_streak_15min: 2,           // 15 minutes of focused work
-  focus_streak_30min: 5,           // 30 minutes of focused work
+  focus_streak_5min: 2,            // 5 minutes of focused work
+  focus_streak_15min: 4,           // 15 minutes of focused work
+  focus_streak_30min: 7,           // 30 minutes of focused work
   
   // Reset ritual (walk)
-  reset_walk: 6,                   // Completed a walk/reset ritual
+  reset_walk: 5,                   // Completed a walk/reset ritual
 } as const
 
 /**
@@ -61,10 +61,13 @@ export const BASE_BONUSES = {
 export const ESCALATION_MULTIPLIERS = [
   1.0,    // 1st offense - full penalty
   1.15,   // 2nd offense - 15% more
-  1.3,    // 3rd offense - 30% more
-  1.4,    // 4th offense - 40% more
-  1.5,    // 5th offense - 50% more
-  1.5,    // 6th+ offense - capped at 50%
+  1.20,    // 3rd offense - 30% more
+  1.25,    // 4th offense - 30% more
+  1.3,    // 4th offense - 40% more
+  1.35,    // 5th offense - 40% more
+  1.4,    // 5th offense - 50% more
+  1.45,    // 6th+ offense - capped at 50%
+  1.5,
 ] as const
 
 /**

@@ -22,6 +22,8 @@ interface SessionTimerState {
   timeRemaining: number
   isOvertime: boolean
   overtimeSeconds: number
+  extensionMinutes: number
+  extendSession: (minutes: number) => void
 }
 
 /**
@@ -35,7 +37,7 @@ interface SessionTimerState {
  * 
  * @example
  * ```tsx
- * const { elapsedSeconds, timeRemaining, isOvertime } = useSessionTimer({
+ * const { elapsedSeconds, timeRemaining, isOvertime, extendSession, extensionMinutes } = useSessionTimer({
  *   isActive: mode === 'session',
  *   isPaused: mode === 'paused',
  *   plannedDurationMinutes: 25,
@@ -47,6 +49,9 @@ interface SessionTimerState {
  *   onTimeUp: () => console.log('Time is up!'),
  *   onOvertime: () => console.log('5 minutes overtime!'),
  * })
+ * 
+ * // Extend session by 5 minutes (e.g., Legend mode penalty)
+ * extendSession(5)
  * ```
  */
 export function useSessionTimer({
@@ -63,16 +68,27 @@ export function useSessionTimer({
 }: UseSessionTimerProps): SessionTimerState {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isOvertime, setIsOvertime] = useState(false)
+  const [extensionMinutes, setExtensionMinutes] = useState(0)
   
   // Refs for tracking trigger states (don't cause re-renders)
   const lastRecoverySave = useRef(0)
   const hasTriggeredTimeUp = useRef(false)
   const hasTriggeredOvertime = useRef(false)
   
-  // Calculate derived values
-  const totalSeconds = plannedDurationMinutes * 60
+  // Calculate derived values (includes any extensions)
+  const totalSeconds = (plannedDurationMinutes + extensionMinutes) * 60
   const timeRemaining = Math.max(0, totalSeconds - elapsedSeconds)
   const overtimeSeconds = Math.max(0, elapsedSeconds - totalSeconds)
+  
+  // Extend session by adding minutes
+  const extendSession = useCallback((minutes: number) => {
+    setExtensionMinutes(prev => prev + minutes)
+    // Reset time-up trigger since we're extending
+    hasTriggeredTimeUp.current = false
+    hasTriggeredOvertime.current = false
+    setIsOvertime(false)
+    console.log(`[Session] Extended by ${minutes} minutes (total extensions: ${extensionMinutes + minutes} min)`)
+  }, [extensionMinutes])
   
   // Save recovery data periodically
   const saveRecoveryData = useCallback(async () => {
@@ -139,6 +155,7 @@ export function useSessionTimer({
     if (sessionId) {
       setElapsedSeconds(0)
       setIsOvertime(false)
+      setExtensionMinutes(0)
       hasTriggeredTimeUp.current = false
       hasTriggeredOvertime.current = false
       lastRecoverySave.current = 0
@@ -157,6 +174,8 @@ export function useSessionTimer({
     timeRemaining,
     isOvertime,
     overtimeSeconds,
+    extensionMinutes,
+    extendSession,
   }
 }
 

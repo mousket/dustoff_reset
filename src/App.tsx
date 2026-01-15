@@ -8,6 +8,7 @@ import type { SessionMode } from '@/features/desktop/hud/FloatingHUD/types'
 import { useSessionManager, SessionConfig } from '@/hooks/useSessionManager'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import { useBandwidthEngine } from '@/hooks/useBandwidthEngine'
+import { useSessionTelemetryStats } from '@/hooks/useSessionTelemetryStats'
 
 // Telemetry
 import { 
@@ -20,6 +21,8 @@ import {
   getDomainCategory,
   isAppWhitelisted,
   isDomainWhitelisted,
+  isDistraction,
+  getInterventionConfig,
   AppCategory,
   type TelemetryEvent,
 } from '@/lib/telemetry'
@@ -37,6 +40,8 @@ import { getNextSessionItems, getActiveParkingLotItems, type ParkingLotItemFull 
 // Overlays
 import { InterventionOverlayAdapter } from '@/components/overlays/InterventionOverlayAdapter'
 import { FlowCelebrationOverlay } from '@/features/desktop/overlays/FlowCelebrationOverlay'
+import { DelayGateAdapter, createInitialDelayGateState, type DelayGateState } from '@/components/overlays/DelayGateAdapter'
+import { BlockScreenAdapter, createInitialBlockScreenState, type BlockScreenState } from '@/components/overlays/BlockScreenAdapter'
 
 // Modals
 import { EndSessionModalAdapter } from '@/components/modals/EndSessionModalAdapter'
@@ -72,6 +77,12 @@ function App() {
   const [showInterventionOverlay, setShowInterventionOverlay] = useState(false)
   const [interventionType, setInterventionType] = useState<InterventionType>('friction')
   const [showFlowCelebration, setShowFlowCelebration] = useState(false)
+  
+  // Delay Gate state (Flow mode intervention)
+  const [delayGateState, setDelayGateState] = useState<DelayGateState>(createInitialDelayGateState())
+  
+  // Legend Mode Intervention state (strict penalty, no countdown)
+  const [blockScreenState, setBlockScreenState] = useState<BlockScreenState>(createInitialBlockScreenState())
 
   // Modal state
   const [showEndSessionModal, setShowEndSessionModal] = useState(false)
@@ -108,12 +119,17 @@ function App() {
     onFlowAchieved: () => {
       console.log('[App] 🎉 Flow achieved!')
       setShowFlowCelebration(true)
+      // Track flow state
+      sessionManager.setInFlowState(true)
+      telemetryStats.recordFlowAchieved()
       // Auto-dismiss after 8 seconds
       setTimeout(() => setShowFlowCelebration(false), 8000)
     },
     onFlowLost: () => {
       console.log('[App] Flow lost')
-      // Could show a subtle notification here
+      // Track flow state
+      sessionManager.setInFlowState(false)
+      telemetryStats.recordFlowLost()
     },
   })
 
@@ -131,6 +147,14 @@ function App() {
     currentBandwidth: bandwidthEngine.current,
     onTimeUp: handleTimeUp,
     onOvertime: handleOvertime,
+  })
+
+  // ============================================
+  // TELEMETRY STATS HOOK
+  // ============================================
+  const telemetryStats = useSessionTelemetryStats({
+    sessionId: sessionManager.sessionId,
+    isActive: mode === 'session' || mode === 'paused',
   })
 
   // ============================================
@@ -153,6 +177,25 @@ function App() {
       resizeForPanel(null) // Back to HUD only
     }
   }, [showEndSessionModal, currentPanel])
+
+  // Auto-enable always-on-top during active sessions
+  useEffect(() => {
+    const updateWindowFloat = async () => {
+      try {
+        const isSessionActive = mode === 'session' || mode === 'paused'
+        if (isSessionActive) {
+          await tauriBridge.setAlwaysOnTop(true)
+          console.log('[Window] Always on top: enabled (session active)')
+        }
+        // Note: We don't disable when session ends to maintain user preference
+        // User can manually toggle via settings if needed
+      } catch (error) {
+        console.error('[Window] Failed to set always on top:', error)
+      }
+    }
+    
+    updateWindowFloat()
+  }, [mode])
 
   const initializeApp = useCallback(async () => {
     try {
@@ -275,6 +318,9 @@ function App() {
 
       // Reset bandwidth engine for new session
       bandwidthEngine.resetEngine()
+      
+      // Reset telemetry stats for new session
+      telemetryStats.resetStats()
 
       setCurrentPanel(null)
       setMode('session')
@@ -354,6 +400,59 @@ function App() {
                   penaltyResult.finalPenalty,
                   `${appName} (${penaltyResult.categoryName}) - not whitelisted`
                 )
+                
+                // Record stats
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  appName
+                )
+                telemetryStats.recordAppSwitch(appName, false)
+                
+                // Record distraction in session manager
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                // Get intervention config based on mode
+                const intervention = getInterventionConfig(
+                  event.appInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                // Flow mode: Delay Gate
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${appName} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: appName,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                // Legend mode: Intervention Screen (no countdown)
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${appName}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: appName,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${appName} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
               }
             },
             onTabSwitch: (event) => {
@@ -365,30 +464,18 @@ function App() {
               
               console.log(`[Telemetry] 🌐 Tab switch: ${domain} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
               
-              // Penalty is applied in onNonWhitelistedDomain to avoid double penalty
-              // This handler is for logging/tracking only
-            },
-            onNonWhitelistedDomain: (event) => {
-              if (!event.browserTab?.domain) return
+              // Skip if whitelisted
+              if (isWhitelisted) return
               
-              const domain = event.browserTab.domain
-              const category = getDomainCategory(domain)
-              const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+              // Only penalize distracting domains (not neutral/productive)
+              if (!isDistraction(category)) return
               
-              // Skip if actually whitelisted (shouldn't happen, but safety check)
-              if (isWhitelisted) {
-                console.log(`[Telemetry] ✅ Domain is whitelisted: ${domain}`)
-                return
-              }
-              
-              console.log(`[Telemetry] ⚠️ Non-whitelisted domain: ${domain} | Category: ${category}`)
-              
-              // Calculate and apply penalty (single penalty, not double!)
+              // Calculate and apply penalty for distracting domain
               const penaltyResult = calculateDomainPenalty(
                 domain,
                 sessionMode,
                 offenseCountRef.current + 1,
-                false // Not whitelisted
+                false
               )
               
               if (penaltyResult.finalPenalty < 0) {
@@ -397,7 +484,75 @@ function App() {
                   penaltyResult.finalPenalty,
                   `${domain} (${penaltyResult.categoryName})`
                 )
+                
+                // Record stats
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  domain
+                )
+                telemetryStats.recordDomainVisit(domain, false)
+                
+                // Record distraction in session manager
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                // Get intervention config
+                const mockAppInfo = {
+                  appName: domain,
+                  bundleId: null,
+                  windowTitle: null,
+                  activeSince: Date.now(),
+                }
+                
+                const intervention = getInterventionConfig(
+                  mockAppInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                // Flow mode: Delay Gate
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${domain} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: domain,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                // Legend mode: Intervention Screen (no countdown)
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${domain}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: domain,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${domain} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
               }
+            },
+            onNonWhitelistedDomain: (event) => {
+              // This event only fires when whitelisted_domains is non-empty
+              // Penalties and delay gate are now handled in onTabSwitch
+              // This handler is just for additional logging
+              if (!event.browserTab?.domain) return
+              const domain = event.browserTab.domain
+              console.log(`[Telemetry] ⚠️ Non-whitelisted domain event: ${domain}`)
             },
             onReturnToWhitelisted: (event) => {
               const appName = event.appInfo?.appName || 'app'
@@ -461,6 +616,14 @@ function App() {
       console.log('[Telemetry] Monitor stopped')
     } catch (telemetryError) {
       console.error('[Telemetry] Failed to stop monitor:', telemetryError)
+    }
+    
+    // === TELEMETRY: Save stats ===
+    try {
+      await telemetryStats.saveStats()
+      console.log('[Telemetry] Stats saved')
+    } catch (statsError) {
+      console.error('[Telemetry] Failed to save stats:', statsError)
     }
 
     const finalSession = await sessionManager.endSession(reason, subReason)
@@ -538,11 +701,14 @@ function App() {
     
     // Only award points for time actually spent
     if (actualMinutes > 0) {
+      const bonusPoints = actualMinutes * 2
       bandwidthEngine.applyResetBonus(actualMinutes)
-      console.log(`[Reset] Awarded ${actualMinutes * 2} points for ${actualMinutes} minutes`)
+      telemetryStats.recordResetRitual(bonusPoints)
+      console.log(`[Reset] Awarded ${bonusPoints} points for ${actualMinutes} minutes`)
     } else if (data.actualDuration >= 30) {
       // At least 30 seconds = 1 point
       bandwidthEngine.applyTelemetryBonus(1, `${data.ritualType} (partial)`)
+      telemetryStats.recordResetRitual(1)
       console.log(`[Reset] Awarded 1 point for ${data.actualDuration}s`)
     } else {
       console.log(`[Reset] No points awarded - only ${data.actualDuration}s spent`)
@@ -573,6 +739,80 @@ function App() {
     setShowInterventionOverlay(false)
     // Open reset panel for deeper intervention
     setCurrentPanel('reset')
+  }
+
+  // ============================================
+  // DELAY GATE HANDLERS (Flow Mode)
+  // ============================================
+
+  const handleDelayGateReturnToWork = () => {
+    console.log('[DelayGate] User chose to return to work')
+    // Award bonus for returning to work
+    const bonusResult = calculateBonus('delay_gate_returned', 
+      (sessionManager.currentSession?.mode || 'Flow') as 'Zen' | 'Flow' | 'Legend'
+    )
+    bandwidthEngine.applyTelemetryBonus(
+      bonusResult.finalBonus,
+      'Returned from delay gate'
+    )
+    // Record intervention response
+    telemetryStats.recordIntervention('returned')
+    telemetryStats.recordBonus(bonusResult.finalBonus, 'Returned from delay gate')
+    // Return to working state
+    sessionManager.addTimelineBlock('working')
+    // Close the delay gate and resize back to HUD
+    setDelayGateState(createInitialDelayGateState())
+    resizeForPanel(null)
+  }
+
+  const handleDelayGateProceed = () => {
+    console.log('[DelayGate] Countdown complete - user proceeding to distraction')
+    // Record intervention response (proceeded through)
+    telemetryStats.recordIntervention('proceeded')
+    // Stay in distracted state (already set)
+    // Penalty already applied when delay gate was triggered
+    // Close the gate and resize back to HUD
+    setDelayGateState(createInitialDelayGateState())
+    resizeForPanel(null)
+  }
+
+  const handleDelayGateDismiss = () => {
+    console.log('[DelayGate] Delay gate dismissed')
+    setDelayGateState(createInitialDelayGateState())
+    resizeForPanel(null)
+  }
+
+  // ============================================
+  // LEGEND MODE INTERVENTION HANDLERS
+  // ============================================
+
+  // Handle session extension when block screen triggers it (fires once per block event)
+  const handleBlockScreenExtension = useCallback((extensionMinutes: number) => {
+    if (extensionMinutes > 0) {
+      timer.extendSession(extensionMinutes)
+      console.log(`[Legend] Session extended by ${extensionMinutes} minutes`)
+    }
+  }, [timer])
+
+  const handleBlockScreenAccept = () => {
+    console.log('[LegendIntervention] User accepted and returned to work')
+    
+    // Award small bonus for accepting the block gracefully
+    const bonusResult = calculateBonus('block_accepted', 
+      (sessionManager.currentSession?.mode || 'Legend') as 'Zen' | 'Flow' | 'Legend'
+    )
+    bandwidthEngine.applyTelemetryBonus(
+      bonusResult.finalBonus,
+      'Accepted block'
+    )
+    // Record intervention response (returned to work)
+    telemetryStats.recordIntervention('returned')
+    telemetryStats.recordBonus(bonusResult.finalBonus, 'Accepted block')
+    // Return to working state
+    sessionManager.addTimelineBlock('working')
+    // Close the block screen and resize back to HUD
+    setBlockScreenState(createInitialBlockScreenState())
+    resizeForPanel(null)
   }
 
   // ============================================
@@ -762,6 +1002,21 @@ function App() {
           />
         )}
 
+        {/* Delay Gate Panel (Flow Mode) - renders below HUD when triggered */}
+        <DelayGateAdapter
+          state={delayGateState}
+          onReturnToWork={handleDelayGateReturnToWork}
+          onProceed={handleDelayGateProceed}
+          onDismiss={handleDelayGateDismiss}
+        />
+
+        {/* Legend Mode Intervention - strict penalty with no countdown */}
+        <BlockScreenAdapter
+          state={blockScreenState}
+          onAccept={handleBlockScreenAccept}
+          onExtension={handleBlockScreenExtension}
+        />
+
         {currentPanel === 'parkingLot' && (
           <ParkingLotPanelAdapter
             isOpen={true}
@@ -774,6 +1029,7 @@ function App() {
           <PostSessionSummaryAdapter
             isOpen={true}
             session={sessionManager.currentSession}
+            telemetryStats={telemetryStats.stats}
             onClose={handleClosePanel}
             onContinueToReflection={handleContinueToReflection}
           />

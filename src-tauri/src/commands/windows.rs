@@ -52,3 +52,27 @@ pub fn get_window_position(app: AppHandle) -> Result<(f64, f64), String> {
         Err("Window not found".to_string())
     }
 }
+
+/// Set whether window stays on top of other windows
+#[tauri::command]
+pub fn set_always_on_top(app: AppHandle, on_top: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .set_always_on_top(on_top)
+            .map_err(|e| format!("Failed to set always on top: {}", e))
+    } else {
+        Err("Window not found".to_string())
+    }
+}
+
+/// Get current always-on-top state
+#[tauri::command]
+pub fn is_always_on_top(app: AppHandle) -> Result<bool, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .is_always_on_top()
+            .map_err(|e| format!("Failed to get always on top state: {}", e))
+    } else {
+        Err("Window not found".to_string())
+    }
+}

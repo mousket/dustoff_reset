@@ -139,6 +139,12 @@ export const tauriBridge = {
   getWindowPosition: (): Promise<{ x: number; y: number }> =>
     invoke('get_window_position'),
 
+  setAlwaysOnTop: (onTop: boolean): Promise<void> =>
+    invoke('set_always_on_top', { onTop }),
+
+  isAlwaysOnTop: (): Promise<boolean> =>
+    invoke('is_always_on_top'),
+
   // ============================================
   // DATA MANAGEMENT
   // ============================================

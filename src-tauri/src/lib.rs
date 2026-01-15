@@ -7,6 +7,7 @@
 use rusqlite::Connection;
 use std::sync::Mutex;
 
+pub mod badges;
 pub mod commands;
 pub mod models;
 pub mod storage;
@@ -19,6 +20,7 @@ pub struct AppState {
 }
 
 // Re-exports for convenient access
+pub use badges::*;
 pub use commands::*;
 pub use models::*;
 pub use storage::*;

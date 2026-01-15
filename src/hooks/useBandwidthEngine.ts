@@ -126,12 +126,13 @@ export function useBandwidthEngine({
   }, [isSessionActive])
   
   // Update initial bandwidth when it changes (e.g., after calibration)
+  // BUT don't reset if we're just paused - preserve current bandwidth
   useEffect(() => {
-    if (!isSessionActive) {
+    if (!isSessionActive && !isPaused) {
       setBandwidth(initialBandwidth)
       lastBandwidth.current = initialBandwidth
     }
-  }, [initialBandwidth, isSessionActive])
+  }, [initialBandwidth, isSessionActive, isPaused])
   
   // Main decay loop (runs every second when session active)
   useEffect(() => {

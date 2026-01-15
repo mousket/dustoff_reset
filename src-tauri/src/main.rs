@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod badges;
 mod commands;
 mod models;
 mod storage;
@@ -59,6 +60,8 @@ fn main() {
             commands::windows::start_dragging,
             commands::windows::set_window_position,
             commands::windows::get_window_position,
+            commands::windows::set_always_on_top,
+            commands::windows::is_always_on_top,
             // Data commands (adding today)
             commands::data::save_calibration,
             commands::data::load_calibration,
@@ -90,6 +93,17 @@ fn main() {
             commands::telemetry::save_telemetry_stats,
             commands::telemetry::get_system_apps,
             commands::telemetry::get_system_browsers,
+            // Badge commands
+            commands::badges::init_badges,
+            commands::badges::get_badges,
+            commands::badges::get_recent_unlocked_badges,
+            commands::badges::check_badge_unlocked,
+            commands::badges::get_streaks,
+            commands::badges::get_streak,
+            commands::badges::check_streak_at_risk,
+            commands::badges::get_stat,
+            commands::badges::evaluate_badges_for_session,
+            commands::badges::get_badge_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

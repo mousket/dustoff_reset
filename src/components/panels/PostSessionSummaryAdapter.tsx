@@ -4,10 +4,12 @@
 import { PanelContainer } from '@/components/PanelContainer'
 import { PostSessionSummaryPanel } from '@/features/desktop/panels/PostSessionSummaryPanel'
 import type { SessionRecord } from '@/lib/tauri-types'
+import type { SessionTelemetryBreakdown } from '@/hooks/useSessionTelemetryStats'
 
 interface PostSessionSummaryAdapterProps {
   isOpen: boolean
   session: SessionRecord | null
+  telemetryStats?: SessionTelemetryBreakdown | null
   onClose: () => void
   onContinueToReflection: () => void
 }
@@ -32,6 +34,7 @@ interface PostSessionSummaryAdapterProps {
 export function PostSessionSummaryAdapter({
   isOpen,
   session,
+  telemetryStats,
   onClose,
   onContinueToReflection,
 }: PostSessionSummaryAdapterProps) {
@@ -50,6 +53,7 @@ export function PostSessionSummaryAdapter({
       <PostSessionSummaryPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         session={session}
+        telemetryStats={telemetryStats}
         onContinueToReflection={handleContinueToReflection}
         onDone={handleDone}
       />

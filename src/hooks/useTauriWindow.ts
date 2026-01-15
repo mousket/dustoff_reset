@@ -12,12 +12,12 @@ export const PANEL_DIMENSIONS = {
   reset: { width: 520, height: 520 },            // Reset ritual selection
   parkingLot: { width: 540, height: 640 },       // Parking lot management
   parkingLotHarvest: { width: 640, height: 720 },// Harvest panel
-  postSessionSummary: { width: 640, height: 700 },// Session summary (increased)
+  postSessionSummary: { width: 640, height: 850 },// Session summary (with bandwidth impact)
   sessionReflection: { width: 600, height: 640 },// Reflection questions (increased)
-  intervention: { width: 440, height: 280 },     // Intervention overlay
   flowCelebration: { width: 540, height: 300 },  // Flow celebration
   endSession: { width: 560, height: 680 },       // End session modal (taller for expanded sub-options)
   recovery: { width: 520, height: 300 },         // Recovery modal (with padding for drag area)
+  intervention: { width: 520, height: 720 },     // All intervention screens (Flow + Legend, dynamic content)
 } as const
 
 export type PanelType = keyof typeof PANEL_DIMENSIONS
