@@ -9,6 +9,14 @@ import { useSessionManager, SessionConfig } from '@/hooks/useSessionManager'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import { useBandwidthEngine } from '@/hooks/useBandwidthEngine'
 import { useSessionTelemetryStats } from '@/hooks/useSessionTelemetryStats'
+import { useBadges } from '@/hooks/useBadges'
+
+// Badge components
+import { BadgeUnlockQueue } from '@/components/badges/BadgeUnlockToast'
+import { BadgeShareModal } from '@/components/badges/BadgeShareModal'
+import { collectSessionStats } from '@/lib/badges/session-stats-collector'
+import { getBadgeById } from '@/lib/badges/badge-definitions'
+import type { BadgeDefinition } from '@/lib/badges/types'
 
 // Telemetry
 import { 
@@ -56,6 +64,12 @@ type AppMode = 'loading' | 'recovery' | 'not-calibrated' | 'idle' | 'pre-session
 type InterventionType = 'friction' | 'focus-slipping'
 
 function App() {
+  // ============================================
+  // BADGE STATE
+  // ============================================
+  const [newlyUnlockedBadges, setNewlyUnlockedBadges] = useState<BadgeDefinition[]>([])
+  const [shareModalBadge, setShareModalBadge] = useState<BadgeDefinition | null>(null)
+  
   // ============================================
   // WINDOW SETUP - Always on top
   // ============================================
@@ -158,6 +172,28 @@ function App() {
   })
 
   // ============================================
+  // BADGES HOOK
+  // ============================================
+  const { evaluateSession, dailyStreak, totalBadges, unlockedCount, isStreakAtRisk: checkStreakAtRisk } = useBadges()
+  const [isStreakAtRisk, setIsStreakAtRisk] = useState(false)
+
+  // Check if streak is at risk (needs a session today)
+  useEffect(() => {
+    const checkRisk = async () => {
+      try {
+        const atRisk = await checkStreakAtRisk()
+        setIsStreakAtRisk(atRisk)
+      } catch (err) {
+        console.error('[Badges] Failed to check streak risk:', err)
+      }
+    }
+    checkRisk()
+    // Recheck every 5 minutes
+    const interval = setInterval(checkRisk, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [checkStreakAtRisk])
+
+  // ============================================
   // INITIALIZATION
   // ============================================
   useEffect(() => {
@@ -177,6 +213,22 @@ function App() {
       resizeForPanel(null) // Back to HUD only
     }
   }, [showEndSessionModal, currentPanel])
+
+  // Resize window when badge notification toast opens
+  useEffect(() => {
+    if (newlyUnlockedBadges.length > 0 && !currentPanel && !showEndSessionModal && !shareModalBadge) {
+      resizeForPanel('badgeNotification')
+    }
+  }, [newlyUnlockedBadges.length, currentPanel, showEndSessionModal, shareModalBadge])
+
+  // Resize window when badge share modal opens
+  useEffect(() => {
+    if (shareModalBadge) {
+      resizeForPanel('badgeShareModal')
+    } else if (newlyUnlockedBadges.length > 0 && !currentPanel && !showEndSessionModal) {
+      resizeForPanel('badgeNotification')
+    }
+  }, [shareModalBadge, newlyUnlockedBadges.length, currentPanel, showEndSessionModal])
 
   // Auto-enable always-on-top during active sessions
   useEffect(() => {
@@ -199,6 +251,22 @@ function App() {
 
   const initializeApp = useCallback(async () => {
     try {
+      // Initialize badge system
+      try {
+        await tauriBridge.initBadges()
+        console.log('[App] Badge system initialized')
+        
+        // Check if streak is at risk on startup
+        const atRisk = await tauriBridge.checkStreakAtRisk()
+        if (atRisk) {
+          console.log('[App] Daily streak is at risk! Complete a session today.')
+          setIsStreakAtRisk(true)
+        }
+      } catch (badgeErr) {
+        console.error('[App] Failed to initialize badges:', badgeErr)
+        // Non-fatal - continue with app initialization
+      }
+
       // Check for crashed session
       const recovery = await tauriBridge.getRecoveryData()
       if (recovery) {
@@ -240,12 +308,16 @@ function App() {
   // ============================================
   function handleTimeUp() {
     console.log('[App] Time is up!')
-    // Could show a completion prompt or celebration
+    // Show the end session modal to let user complete the session
+    setShowEndSessionModal(true)
   }
 
   function handleOvertime() {
     console.log('[App] Session is 5 minutes overtime!')
-    // Could show overtime nudge toast
+    // Show end session modal again if user hasn't ended yet
+    if (!showEndSessionModal) {
+      setShowEndSessionModal(true)
+    }
   }
 
   // ============================================
@@ -636,6 +708,50 @@ function App() {
         reason,
         subReason,
       })
+      
+      // === BADGES: Evaluate session for badge unlocks ===
+      const isCompleted = reason === 'mission_complete'
+      const quitEarly = reason === 'stopping_early' || reason === 'pulled_away'
+      
+      try {
+        const stats = collectSessionStats(
+          {
+            sessionId: sessionManager.sessionId || `session_${Date.now()}`,
+            mode: sessionManager.currentSession?.mode || 'Zen',
+            durationMinutes: finalSession.actualDurationMinutes || 0,
+            finalBandwidth: Math.round(bandwidthEngine.current),
+            completed: isCompleted,
+            quitEarly,
+          },
+          {
+            distractionCount: telemetryStats.stats.offenseCount || 0,
+            delayGatesShown: telemetryStats.stats.interventionCount || 0,
+            delayGatesReturned: telemetryStats.stats.interventionReturnedCount || 0,
+            blocksShown: telemetryStats.stats.interventionCount || 0,
+            extensionsSurvived: 0, // TODO: Track extensions survived
+            totalPenalties: Math.abs(telemetryStats.stats.totalPenaltyPoints || 0),
+            totalBonuses: telemetryStats.stats.totalBonusPoints || 0,
+          }
+        )
+        
+        const badgeResult = await evaluateSession(stats)
+        
+        if (badgeResult.unlocked.length > 0) {
+          // Convert user badges to badge definitions for display
+          const unlockedDefs = badgeResult.unlocked
+            .map(ub => getBadgeById(ub.badgeId))
+            .filter((b): b is BadgeDefinition => b !== null)
+          
+          setNewlyUnlockedBadges(unlockedDefs)
+          console.log('[Badges] Unlocked:', unlockedDefs.map(b => b.name))
+        }
+        
+        if (badgeResult.streakUpdates.length > 0) {
+          console.log('[Badges] Streak updates:', badgeResult.streakUpdates)
+        }
+      } catch (badgeError) {
+        console.error('[Badges] Evaluation failed:', badgeError)
+      }
     }
 
     setMode('post-session')
@@ -935,6 +1051,8 @@ function App() {
           timeRemaining={timer.timeRemaining}
           totalTime={totalTimeSeconds}
           isInFlow={bandwidthEngine.isInFlow}
+          streakCount={dailyStreak?.currentCount || 0}
+          isStreakAtRisk={isStreakAtRisk}
           onStartSession={handleStartSession}
           onPauseSession={handlePauseSession}
           onResumeSession={handleResumeSession}
@@ -1050,8 +1168,30 @@ function App() {
             onClose={handleHarvestComplete}
             sessionId={sessionManager.sessionId || undefined}
           />
+        )} 
+
+        {/* Badge Unlock Queue - shows newly unlocked badges after session */}
+        {newlyUnlockedBadges.length > 0 && (
+          <BadgeUnlockQueue
+            badges={newlyUnlockedBadges}
+            onShare={(badge) => setShareModalBadge(badge)}
+            onAllClosed={() => setNewlyUnlockedBadges([])}
+          />
         )}
 
+        {/* Badge Share Modal - for sharing badge achievements */}
+        {shareModalBadge && (
+          <BadgeShareModal
+            badge={shareModalBadge}
+            isOpen={true}
+            stats={{
+              streak: dailyStreak?.currentCount,
+              totalSessions: unlockedCount,
+            }}
+            onClose={() => setShareModalBadge(null)}
+          />
+        )}
+       
       </div>
     </div>
   )

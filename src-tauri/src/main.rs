@@ -25,9 +25,18 @@ fn main() {
             let conn = init_database(&app.handle()).expect("Failed to initialize database");
 
             // Store in app state
-            app.manage(AppState {
+            let app_state = AppState {
                 db: Mutex::new(conn),
-            });
+            };
+            
+            // Initialize badge tables
+            if let Ok(conn) = app_state.db.lock() {
+                if let Err(e) = badges::persistence::init_badge_tables(&conn) {
+                    eprintln!("Warning: Failed to initialize badge tables: {}", e);
+                }
+            }
+            
+            app.manage(app_state);
 
             // Initialize telemetry state
             app.manage(TelemetryState::new());
@@ -104,6 +113,7 @@ fn main() {
             commands::badges::get_stat,
             commands::badges::evaluate_badges_for_session,
             commands::badges::get_badge_count,
+            commands::badges::record_badge_share,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

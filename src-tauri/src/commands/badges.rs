@@ -20,6 +20,8 @@ use crate::badges::streaks::{
     STREAK_DAILY,
 };
 
+use crate::badges::persistence::increment_lifetime_stat;
+
 /// Helper to convert PoisonError to String
 fn lock_err<T>(_: PoisonError<T>) -> String {
     "Failed to acquire database lock".to_string()
@@ -98,4 +100,11 @@ pub fn evaluate_badges_for_session(
 pub fn get_badge_count(state: State<AppState>) -> Result<i32, String> {
     let conn = state.db.lock().map_err(lock_err)?;
     db_get_badge_count(&conn)
+}
+
+/// Record a share action (for share-related badges)
+#[command]
+pub fn record_badge_share(state: State<AppState>) -> Result<i32, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    increment_lifetime_stat(&conn, "total_shares", 1)
 }

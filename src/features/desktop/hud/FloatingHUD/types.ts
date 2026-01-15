@@ -12,6 +12,9 @@ export interface FloatingHUDProps {
   totalTime?: number  
   timeRemaining?: number
   isInFlow?: boolean // Added isInFlow prop for persistent flow indicator
+  // Streak display
+  streakCount?: number
+  isStreakAtRisk?: boolean
   onStartCalibration: () => void
   onStartSession: () => void
   onPauseSession?: () => void

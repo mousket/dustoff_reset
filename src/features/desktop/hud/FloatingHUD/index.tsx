@@ -11,6 +11,8 @@ export function FloatingHUD({
   sessionTime = 0,
   timeRemaining = 0,
   isInFlow = false,
+  streakCount = 0,
+  isStreakAtRisk = false,
   onStartCalibration,
   onStartSession,
   onPauseSession,
@@ -113,6 +115,20 @@ export function FloatingHUD({
                 <span className="text-xs font-medium" style={{ color: isPaused ? "#71717a" : modeStyles.color }}>
                   {sessionMode || "Session"}
                 </span>
+                {/* Streak indicator during session */}
+                {streakCount > 0 && (
+                  <div 
+                    className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                      isStreakAtRisk ? 'bg-amber-500/20 text-amber-400' : 'bg-zinc-800/80 text-zinc-400'
+                    }`}
+                    style={{
+                      boxShadow: isStreakAtRisk ? '0 0 8px rgba(251, 191, 36, 0.3)' : undefined,
+                    }}
+                  >
+                    <span>🔥</span>
+                    <span>{streakCount}</span>
+                  </div>
+                )}
               </div>
               <div className={`text-xs font-mono ${isPaused ? "text-zinc-500" : "text-emerald-400"}`}>
                 {formatTime(sessionTime)} / {formatTime(sessionTime + timeRemaining)}
@@ -130,8 +146,26 @@ export function FloatingHUD({
             </>
           ) : (
             <>
-              <span className="text-xs text-zinc-400">Ready to Work</span>
-              <span className="text-[10px] text-zinc-600">Start your session</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">Ready to Work</span>
+                {/* Streak indicator when idle */}
+                {streakCount > 0 && (
+                  <div 
+                    className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                      isStreakAtRisk ? 'bg-amber-500/20 text-amber-400 animate-pulse' : 'bg-zinc-800/80 text-zinc-400'
+                    }`}
+                    style={{
+                      boxShadow: isStreakAtRisk ? '0 0 8px rgba(251, 191, 36, 0.3)' : undefined,
+                    }}
+                  >
+                    <span>🔥</span>
+                    <span>{streakCount}</span>
+                  </div>
+                )}
+              </div>
+              <span className="text-[10px] text-zinc-600">
+                {isStreakAtRisk ? "Streak at risk! Start a session" : "Start your session"}
+              </span>
             </>
           )}
         </div>

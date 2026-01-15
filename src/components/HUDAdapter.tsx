@@ -15,6 +15,9 @@ interface HUDAdapterProps {
   timeRemaining: number    // Remaining time in seconds
   totalTime: number        // Total planned time in seconds
   isInFlow: boolean
+  // Streak display
+  streakCount?: number
+  isStreakAtRisk?: boolean
   
   // Callbacks
   onStartSession: () => void
@@ -36,6 +39,8 @@ export function HUDAdapter({
   sessionTime,
   timeRemaining,
   isInFlow,
+  streakCount,
+  isStreakAtRisk,
   onStartSession,
   onPauseSession,
   onResumeSession,
@@ -104,6 +109,8 @@ export function HUDAdapter({
         sessionTime={sessionTime}
         timeRemaining={timeRemaining}
         isInFlow={isInFlow}
+        streakCount={streakCount}
+        isStreakAtRisk={isStreakAtRisk}
         onStartCalibration={onCalibrate}
         onStartSession={onStartSession}
         onPauseSession={onPauseSession}

@@ -25,7 +25,7 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
   const [selectedParkingLotItems, setSelectedParkingLotItems] = useState<string[]>([])
   const [intention, setIntention] = useState("")
   const [mode, setMode] = useState<"Zen" | "Flow" | "Legend">("Zen")
-  const [duration, setDuration] = useState(50)
+  const [duration, setDuration] = useState(25)
   const [whitelistedApps, setWhitelistedApps] = useState<string[]>([])
   const [whitelistedBrowser, setWhitelistedBrowser] = useState("")
   const [whitelistedDomains, setWhitelistedDomains] = useState<string[]>(["", "", ""])
@@ -361,17 +361,17 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
                   <label className="block text-sm font-medium text-zinc-200 mb-1.5">Duration: {duration} min</label>
                   <input
                     type="range"
-                    min="15"
+                    min="5"
                     max="90"
-                    step="15"
+                    step="5"
                     value={duration}
                     onChange={(e) => setDuration(Number.parseInt(e.target.value))}
                     className="w-full"
                   />
                   <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
-                    <span>15m</span>
-                    <span>30m</span>
-                    <span>50m</span>
+                    <span>5m</span>
+                    <span>25m</span>
+                    <span>45m</span>
                     <span>90m</span>
                   </div>
                 </div>

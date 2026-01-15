@@ -18,6 +18,8 @@ export const PANEL_DIMENSIONS = {
   endSession: { width: 560, height: 680 },       // End session modal (taller for expanded sub-options)
   recovery: { width: 520, height: 300 },         // Recovery modal (with padding for drag area)
   intervention: { width: 520, height: 720 },     // All intervention screens (Flow + Legend, dynamic content)
+  badgeNotification: { width: 320, height: 200 },// Badge unlock toast (HUD + compact notification)
+  badgeShareModal: { width: 460, height: 620 },  // Badge share modal (scaled card + buttons)
 } as const
 
 export type PanelType = keyof typeof PANEL_DIMENSIONS

@@ -13,6 +13,12 @@ import type {
   UserData,
 } from './tauri-types'
 import type { TelemetryEvent } from './telemetry'
+import type { 
+  UserBadge, 
+  Streak, 
+  BadgeEvaluationResult, 
+  SessionStatsForBadges 
+} from '@/lib/badges/types'
 
 // Telemetry stats type (matching Rust SessionTelemetryStats)
 export interface SessionTelemetryStats {
@@ -216,6 +222,79 @@ export const tauriBridge = {
    */
   getSystemBrowsers: (): Promise<InstalledApp[]> =>
     invoke('get_system_browsers'),
+
+  // ============================================
+  // BADGES & STREAKS
+  // ============================================
+
+  /**
+   * Initialize badge tables (call on app startup)
+   */
+  initBadges: (): Promise<void> =>
+    invoke('init_badges'),
+
+  /**
+   * Get all unlocked badges
+   */
+  getBadges: (): Promise<UserBadge[]> =>
+    invoke('get_badges'),
+
+  /**
+   * Get recently unlocked badges
+   */
+  getRecentBadges: (limit: number): Promise<UserBadge[]> =>
+    invoke('get_recent_unlocked_badges', { limit }),
+
+  /**
+   * Check if a specific badge is unlocked
+   */
+  checkBadgeUnlocked: (badgeId: string): Promise<boolean> =>
+    invoke('check_badge_unlocked', { badgeId }),
+
+  /**
+   * Get all streaks
+   */
+  getStreaks: (): Promise<Streak[]> =>
+    invoke('get_streaks'),
+
+  /**
+   * Get a specific streak by type
+   */
+  getStreak: (streakType: string): Promise<Streak> =>
+    invoke('get_streak', { streakType }),
+
+  /**
+   * Check if daily streak is at risk
+   */
+  checkStreakAtRisk: (): Promise<boolean> =>
+    invoke('check_streak_at_risk'),
+
+  /**
+   * Get a lifetime stat value
+   */
+  getStat: (key: string): Promise<number> =>
+    invoke('get_stat', { key }),
+
+  /**
+   * Evaluate badges after session completion
+   * This is the main entry point called when a session ends
+   */
+  evaluateBadgesForSession: (stats: SessionStatsForBadges): Promise<BadgeEvaluationResult> =>
+    invoke('evaluate_badges_for_session', { stats }),
+
+  /**
+   * Get total unlocked badge count
+   */
+  getBadgeCount: (): Promise<number> =>
+    invoke('get_badge_count'),
+
+  /**
+   * Record a share action (for share badges)
+   */
+  recordBadgeShare: async (): Promise<number> => {
+    return invoke('record_badge_share')
+  },
+
 }
 
 /**
@@ -252,3 +331,5 @@ export type {
   ItemCategory,
   ItemAction,
 } from './tauri-types'
+
+
