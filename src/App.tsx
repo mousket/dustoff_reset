@@ -6,6 +6,10 @@ import type { SessionMode } from '@/features/desktop/hud/FloatingHUD/types'
 
 // Hooks
 import { useSessionManager, SessionConfig } from '@/hooks/useSessionManager'
+import { usePermissions } from '@/hooks/usePermissions'
+
+// Permission Setup
+import { PermissionSetup } from '@/components/permissions/PermissionSetup'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import { useBandwidthEngine } from '@/hooks/useBandwidthEngine'
 import { useSessionTelemetryStats } from '@/hooks/useSessionTelemetryStats'
@@ -55,6 +59,9 @@ import { BlockScreenAdapter, createInitialBlockScreenState, type BlockScreenStat
 import { EndSessionModalAdapter } from '@/components/modals/EndSessionModalAdapter'
 import { InterruptedSessionModalAdapter } from '@/components/modals/InterruptedSessionModalAdapter'
 
+// DEV ONLY - Badge Test Panel (remove before production)
+import { BadgeTestPanel } from '@/components/dev/BadgeTestPanel'
+
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 // Dev utilities - exposes helpers to browser console
@@ -65,10 +72,65 @@ type InterventionType = 'friction' | 'focus-slipping'
 
 function App() {
   // ============================================
+  // PERMISSION STATE
+  // ============================================
+  const { isGranted, isLoading: permissionsLoading } = usePermissions()
+  const [permissionsComplete, setPermissionsComplete] = useState(false)
+  const [skippedPermissions, setSkippedPermissions] = useState(false)
+
+  // Note: showPermissionSetup is derived after mode state is defined (see DERIVED section)
+
+  // If permissions are already granted, mark as complete
+  useEffect(() => {
+    if (isGranted) {
+      setPermissionsComplete(true)
+    }
+  }, [isGranted])
+
+  // ============================================
   // BADGE STATE
   // ============================================
   const [newlyUnlockedBadges, setNewlyUnlockedBadges] = useState<BadgeDefinition[]>([])
   const [shareModalBadge, setShareModalBadge] = useState<BadgeDefinition | null>(null)
+  
+  // ============================================
+  // DEV ONLY - Badge Test Panel
+  // ============================================
+  const [showBadgeTestPanel, setShowBadgeTestPanel] = useState(false)
+  
+  // Keyboard shortcut: Cmd/Ctrl + Shift + B to toggle test panel
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setShowBadgeTestPanel(prev => {
+          const newState = !prev
+          console.log('[DEV] Badge test panel toggled:', newState)
+          
+          // Resize window for test panel
+          if (newState) {
+            tauriBridge.resizeWindow(650, 700)
+          } else {
+            // Restore to HUD size (will be resized again by other effects if panel is open)
+            tauriBridge.resizeWindow(320, 80)
+          }
+          
+          return newState
+        })
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+  
+  // Handler for triggering badge unlock from test panel
+  const handleTestBadgeUnlock = async (badge: BadgeDefinition) => {
+    console.log('[DEV] Triggering badge unlock:', badge.name)
+    setNewlyUnlockedBadges(prev => [...prev, badge])
+    setShowBadgeTestPanel(false)
+    // Resize for badge notification
+    await tauriBridge.resizeWindow(440, 280)
+  }
   
   // ============================================
   // WINDOW SETUP - Always on top
@@ -86,6 +148,11 @@ function App() {
   const [calibration, setCalibration] = useState<CalibrationData | null>(null)
   const [recoveryData, setRecoveryData] = useState<RecoveryData | null>(null)
   const [nextSessionItems, setNextSessionItems] = useState<ParkingLotItemFull[]>([])
+  
+  // Current session whitelist (for recovery data saving)
+  const [currentWhitelistedApps, setCurrentWhitelistedApps] = useState<string[]>([])
+  const [currentWhitelistedTabs, setCurrentWhitelistedTabs] = useState<string[]>([])
+  const [initialElapsedSeconds, setInitialElapsedSeconds] = useState(0)
 
   // Overlay state
   const [showInterventionOverlay, setShowInterventionOverlay] = useState(false)
@@ -98,6 +165,17 @@ function App() {
   // Legend Mode Intervention state (strict penalty, no countdown)
   const [blockScreenState, setBlockScreenState] = useState<BlockScreenState>(createInitialBlockScreenState())
 
+  // ============================================
+  // DERIVED: SHOW PERMISSION SETUP
+  // ============================================
+  // Don't show permission setup during recovery mode or loading
+  const showPermissionSetup = !permissionsLoading && 
+                               !isGranted && 
+                               !permissionsComplete && 
+                               !skippedPermissions &&
+                               mode !== 'recovery' &&
+                               mode !== 'loading'
+
   // Modal state
   const [showEndSessionModal, setShowEndSessionModal] = useState(false)
 
@@ -106,6 +184,9 @@ function App() {
   
   // Telemetry offense tracking for escalation
   const offenseCountRef = useRef(0)
+  
+  // Track last whitelisted app for "Return to Work" feature
+  const lastWhitelistedAppRef = useRef<string | null>(null)
 
   // ============================================
   // SESSION MANAGER HOOK
@@ -159,6 +240,9 @@ function App() {
     mode: (sessionManager.currentSession?.mode || 'Flow') as SessionMode,
     intention: sessionManager.currentSession?.intention || null,
     currentBandwidth: bandwidthEngine.current,
+    whitelistedApps: currentWhitelistedApps,
+    whitelistedTabs: currentWhitelistedTabs,
+    initialElapsedSeconds,
     onTimeUp: handleTimeUp,
     onOvertime: handleOvertime,
   })
@@ -202,8 +286,17 @@ function App() {
 
   // Resize window when panel changes
   useEffect(() => {
-    resizeForPanel(currentPanel)
-  }, [currentPanel])
+    if (!showPermissionSetup) {
+      resizeForPanel(currentPanel)
+    }
+  }, [currentPanel, showPermissionSetup])
+
+  // Resize window for permission setup
+  useEffect(() => {
+    if (showPermissionSetup) {
+      resizeForPanel('permissionSetup')
+    }
+  }, [showPermissionSetup])
 
   // Resize window when end session modal opens
   useEffect(() => {
@@ -214,21 +307,20 @@ function App() {
     }
   }, [showEndSessionModal, currentPanel])
 
-  // Resize window when badge notification toast opens
-  useEffect(() => {
-    if (newlyUnlockedBadges.length > 0 && !currentPanel && !showEndSessionModal && !shareModalBadge) {
-      resizeForPanel('badgeNotification')
-    }
-  }, [newlyUnlockedBadges.length, currentPanel, showEndSessionModal, shareModalBadge])
-
-  // Resize window when badge share modal opens
+  // Resize window for badge panels AND resize back when badges close
   useEffect(() => {
     if (shareModalBadge) {
       resizeForPanel('badgeShareModal')
-    } else if (newlyUnlockedBadges.length > 0 && !currentPanel && !showEndSessionModal) {
+    } else if (newlyUnlockedBadges.length > 0) {
       resizeForPanel('badgeNotification')
+    } else if (currentPanel) {
+      // Badges closed - resize to the current panel
+      resizeForPanel(currentPanel)
+    } else {
+      // Badges closed and no panel open - resize to HUD only
+      resizeForPanel(null)
     }
-  }, [shareModalBadge, newlyUnlockedBadges.length, currentPanel, showEndSessionModal])
+  }, [newlyUnlockedBadges.length, shareModalBadge, currentPanel])
 
   // Auto-enable always-on-top during active sessions
   useEffect(() => {
@@ -307,7 +399,9 @@ function App() {
   // TIMER CALLBACKS
   // ============================================
   function handleTimeUp() {
-    console.log('[App] Time is up!')
+    console.log('[App] Time is up! Pausing session and showing completion modal.')
+    // Pause the session so timer stops
+    setMode('paused')
     // Show the end session modal to let user complete the session
     setShowEndSessionModal(true)
   }
@@ -316,6 +410,7 @@ function App() {
     console.log('[App] Session is 5 minutes overtime!')
     // Show end session modal again if user hasn't ended yet
     if (!showEndSessionModal) {
+      setMode('paused')
       setShowEndSessionModal(true)
     }
   }
@@ -345,21 +440,127 @@ function App() {
 
   const handleRecoveryResume = async () => {
     if (!recoveryData) return
+    
+    console.log('[Recovery] Resuming session from:', recoveryData)
+    console.log('[Recovery] Elapsed seconds:', recoveryData.elapsedSeconds)
+    console.log('[Recovery] Whitelisted apps:', recoveryData.whitelistedApps)
+    console.log('[Recovery] Whitelisted tabs:', recoveryData.whitelistedTabs)
 
-    // Start a new session with recovered config
+    // Resume session with FULL recovered config including whitelists
     const config: SessionConfig = {
       mode: recoveryData.mode,
       durationMinutes: recoveryData.plannedDurationMinutes,
       intention: recoveryData.intention || '',
-      whitelistedApps: [],
-      whitelistedTabs: [],
+      whitelistedApps: recoveryData.whitelistedApps || [],
+      whitelistedTabs: recoveryData.whitelistedTabs || [],
     }
 
     await sessionManager.startSession(config)
+    
+    // Restore the whitelist state for the timer
+    setCurrentWhitelistedApps(recoveryData.whitelistedApps || [])
+    setCurrentWhitelistedTabs(recoveryData.whitelistedTabs || [])
+    
+    // CRITICAL: Set the initial elapsed seconds so timer continues from where it was
+    setInitialElapsedSeconds(recoveryData.elapsedSeconds)
+    
+    // Restore bandwidth if it was saved
+    if (recoveryData.bandwidthAtPause !== null && recoveryData.bandwidthAtPause !== undefined) {
+      bandwidthEngine.restoreBandwidth(recoveryData.bandwidthAtPause)
+      console.log('[Recovery] Restored bandwidth to:', recoveryData.bandwidthAtPause)
+    }
+    
+    // Reset telemetry stats (we don't persist these across crashes)
+    telemetryStats.resetStats()
 
     await tauriBridge.clearRecoveryData()
     setRecoveryData(null)
     setMode('session')
+    
+    // Restart telemetry monitoring with recovered whitelist
+    if (sessionManager.sessionId) {
+      telemetryStats.activate()
+      
+      const sessionMode = recoveryData.mode as 'Zen' | 'Flow' | 'Legend'
+      const whitelistedApps = recoveryData.whitelistedApps || []
+      const whitelistedTabs = recoveryData.whitelistedTabs || []
+      
+      // Setup telemetry listeners (same as handleSessionStart)
+      const cleanup = await setupTelemetryListeners({
+        onAppSwitch: (event) => {
+          if (!event.appInfo) return
+          
+          const appName = event.appInfo.appName
+          const category = getAppCategory(event.appInfo)
+          const isWhitelisted = isAppWhitelisted(event.appInfo, whitelistedApps)
+          
+          console.log(`[Recovery Telemetry] 📱 App switch: ${appName}`)
+          
+          // Track last whitelisted app
+          if (isWhitelisted && !appName.toLowerCase().includes('dustoff')) {
+            lastWhitelistedAppRef.current = appName
+          }
+          
+          if (isWhitelisted || !isDistraction(category)) return
+          
+          // Apply penalties (same logic as handleSessionStart)
+          const penaltyResult = calculateAppSwitchPenalty(
+            event.appInfo,
+            sessionMode,
+            offenseCountRef.current + 1,
+            false
+          )
+          
+          if (penaltyResult.finalPenalty < 0) {
+            offenseCountRef.current++
+            bandwidthEngine.applyTelemetryPenalty(penaltyResult.finalPenalty, `${appName} (${penaltyResult.categoryName})`)
+            telemetryStats.recordPenalty(penaltyResult.finalPenalty, penaltyResult.categoryName, appName)
+            sessionManager.recordDistraction(penaltyResult.categoryName)
+            sessionManager.addTimelineBlock('distracted')
+          }
+        },
+        onTabSwitch: (event) => {
+          if (!event.browserTab?.domain) return
+          
+          const domain = event.browserTab.domain
+          const category = getDomainCategory(domain)
+          const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+          
+          console.log(`[Recovery Telemetry] 🌐 Tab switch: ${domain}`)
+          
+          if (isWhitelisted || !isDistraction(category)) return
+          
+          const penaltyResult = calculateDomainPenalty(domain, sessionMode, offenseCountRef.current + 1, false)
+          
+          if (penaltyResult.finalPenalty < 0) {
+            offenseCountRef.current++
+            bandwidthEngine.applyTelemetryPenalty(penaltyResult.finalPenalty, `${domain} (${penaltyResult.categoryName})`)
+            telemetryStats.recordPenalty(penaltyResult.finalPenalty, penaltyResult.categoryName, domain)
+            sessionManager.recordDistraction(penaltyResult.categoryName)
+            sessionManager.addTimelineBlock('distracted')
+          }
+        },
+        onReturnToWhitelisted: (event) => {
+          if (event.appInfo?.appName && !event.appInfo.appName.toLowerCase().includes('dustoff')) {
+            lastWhitelistedAppRef.current = event.appInfo.appName
+          }
+        },
+        onNonWhitelistedDomain: () => {},
+      })
+      
+      telemetryCleanupRef.current = cleanup
+      
+      // Start Rust telemetry monitor
+      await tauriBridge.startTelemetryMonitor(
+        sessionManager.sessionId,
+        whitelistedApps,
+        whitelistedTabs
+      )
+      
+      console.log('[Recovery] ✅ Telemetry monitoring restarted')
+    }
+    
+    console.log('[Recovery] ✅ Session resumed from', Math.floor(recoveryData.elapsedSeconds / 60), 'minutes')
   }
 
   const handleRecoveryDiscard = async () => {
@@ -396,6 +597,11 @@ function App() {
 
       setCurrentPanel(null)
       setMode('session')
+      
+      // Store whitelist for recovery data saving
+      setCurrentWhitelistedApps(config.whitelistedApps)
+      setCurrentWhitelistedTabs(config.whitelistedTabs)
+      setInitialElapsedSeconds(0)  // Fresh session starts at 0
 
       console.log('[App] Session started:', sessionManager.sessionId)
       console.log('[App] Whitelisted apps:', config.whitelistedApps)
@@ -405,14 +611,9 @@ function App() {
       if (sessionManager.sessionId) {
         console.log('[Telemetry] About to start monitor...')
         try {
-          // Start the telemetry monitor with whitelisted apps/tabs
-          console.log('[Telemetry] Calling tauriBridge.startTelemetryMonitor...')
-          await tauriBridge.startTelemetryMonitor(
-            sessionManager.sessionId,
-            config.whitelistedApps,
-            config.whitelistedTabs
-          )
-          console.log('[Telemetry] ✅ Monitor started for session:', sessionManager.sessionId)
+          // IMPORTANT: Activate telemetry stats BEFORE setting up listeners
+          // This fixes the race condition where listeners fire before React re-renders
+          telemetryStats.activate()
 
           // Reset offense count for new session
           offenseCountRef.current = 0
@@ -422,7 +623,9 @@ function App() {
           const whitelistedApps = config.whitelistedApps
           const whitelistedTabs = config.whitelistedTabs
           
-          // Setup event listeners
+          // IMPORTANT: Setup event listeners BEFORE starting the Rust monitor
+          // This ensures JS is ready to receive events when Rust starts emitting
+          console.log('[Telemetry] Setting up listeners first...')
           const cleanup = await setupTelemetryListeners({
             onAppSwitch: (event) => {
               if (!event.appInfo) return
@@ -432,6 +635,12 @@ function App() {
               const isWhitelisted = isAppWhitelisted(event.appInfo, whitelistedApps)
               
               console.log(`[Telemetry] 📱 App switch: ${appName} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              // Track last whitelisted app for "Return to Work" feature
+              if (isWhitelisted && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
               
               // Calculate penalty (even for whitelisted, to get category info)
               const penaltyResult = calculateAppSwitchPenalty(
@@ -502,6 +711,7 @@ function App() {
                   setDelayGateState({
                     isOpen: true,
                     triggerName: appName,
+                    triggerApp: appName,  // Track the app to minimize on return
                     category: category,
                     delaySeconds: intervention.delaySeconds || 10,
                     offenseNumber: offenseCountRef.current,
@@ -518,6 +728,7 @@ function App() {
                   setBlockScreenState({
                     isOpen: true,
                     triggerName: appName,
+                    triggerApp: appName,  // Track the app
                     category: category,
                     offenseNumber: offenseCountRef.current,
                     message: intervention.message || `${appName} is blocked.`,
@@ -584,15 +795,19 @@ function App() {
                   false
                 )
                 
+                // Get the browser name for tab closing
+                const browserName = event.browserTab.browser || 'Chrome'
+                
                 // Flow mode: Delay Gate
                 if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
-                  console.log(`[DelayGate] Triggering for ${domain} (${intervention.delaySeconds}s)`)
+                  console.log(`[DelayGate] Triggering for ${domain} in ${browserName} (${intervention.delaySeconds}s)`)
                   sessionManager.recordIntervention('delay_gate')
                   setCurrentPanel(null)
                   resizeForPanel('intervention')
                   setDelayGateState({
                     isOpen: true,
                     triggerName: domain,
+                    triggerApp: browserName,  // Track the browser to minimize on return
                     category: category,
                     delaySeconds: intervention.delaySeconds || 10,
                     offenseNumber: offenseCountRef.current,
@@ -602,13 +817,14 @@ function App() {
                 
                 // Legend mode: Intervention Screen (no countdown)
                 if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
-                  console.log(`[LegendIntervention] Triggering for ${domain}`)
+                  console.log(`[LegendIntervention] Triggering for ${domain} in ${browserName}`)
                   sessionManager.recordIntervention('block_screen')
                   setCurrentPanel(null)
                   resizeForPanel('intervention')
                   setBlockScreenState({
                     isOpen: true,
                     triggerName: domain,
+                    triggerBrowser: browserName,  // Track browser for tab closing
                     category: category,
                     offenseNumber: offenseCountRef.current,
                     message: intervention.message || `${domain} is blocked.`,
@@ -630,6 +846,12 @@ function App() {
               const appName = event.appInfo?.appName || 'app'
               console.log(`[Telemetry] ✅ Returned to whitelisted: ${appName}`)
               
+              // Track last whitelisted app for "Return to Work" feature
+              if (appName && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
+              
               // Apply quick return bonus
               const bonusResult = calculateBonus('quick_return', sessionMode)
               bandwidthEngine.applyTelemetryBonus(
@@ -642,6 +864,16 @@ function App() {
             },
           })
           telemetryCleanupRef.current = cleanup
+          console.log('[Telemetry] ✅ Listeners set up')
+          
+          // NOW start the Rust telemetry monitor (after JS listeners are ready)
+          console.log('[Telemetry] Starting Rust monitor...')
+          await tauriBridge.startTelemetryMonitor(
+            sessionManager.sessionId,
+            config.whitelistedApps,
+            config.whitelistedTabs
+          )
+          console.log('[Telemetry] ✅ Monitor started for session:', sessionManager.sessionId)
         } catch (telemetryError) {
           console.error('[Telemetry] Failed to start monitor:', telemetryError)
           // Continue without telemetry - app still works
@@ -673,13 +905,17 @@ function App() {
   }
 
   const handleEndSessionConfirm = async (
-    reason: 'mission_complete' | 'stopping_early' | 'pulled_away',
+    reason: 'completed' | 'mission_complete' | 'stopping_early' | 'pulled_away',
     subReason?: string
   ) => {
+    console.log('🚀 [EndSession] handleEndSessionConfirm called!')
+    console.log('🚀 [EndSession] Reason:', reason)
+    console.log('🚀 [EndSession] SubReason:', subReason)
     setShowEndSessionModal(false)
     
     // === TELEMETRY: Stop monitoring ===
     try {
+      telemetryStats.deactivate()
       await tauriBridge.stopTelemetryMonitor()
       if (telemetryCleanupRef.current) {
         telemetryCleanupRef.current()
@@ -710,8 +946,11 @@ function App() {
       })
       
       // === BADGES: Evaluate session for badge unlocks ===
-      const isCompleted = reason === 'mission_complete'
+      // Note: EndSessionModal passes "completed", not "mission_complete"
+      const isCompleted = reason === 'completed' || reason === 'mission_complete'
       const quitEarly = reason === 'stopping_early' || reason === 'pulled_away'
+      
+      console.log('[Badges] Session end reason:', reason, '| Completed:', isCompleted, '| QuitEarly:', quitEarly)
       
       try {
         const stats = collectSessionStats(
@@ -734,16 +973,32 @@ function App() {
           }
         )
         
+        console.log('[Badges] Evaluating session with stats:', JSON.stringify(stats, null, 2))
+        
         const badgeResult = await evaluateSession(stats)
+        
+        console.log('[Badges] Evaluation result:', {
+          unlockedCount: badgeResult.unlocked.length,
+          unlocked: badgeResult.unlocked.map(b => b.badgeId),
+          streakUpdates: badgeResult.streakUpdates.length,
+        })
         
         if (badgeResult.unlocked.length > 0) {
           // Convert user badges to badge definitions for display
           const unlockedDefs = badgeResult.unlocked
-            .map(ub => getBadgeById(ub.badgeId))
+            .map(ub => {
+              const def = getBadgeById(ub.badgeId)
+              console.log(`[Badges] Getting definition for ${ub.badgeId}:`, def ? def.name : 'NOT FOUND')
+              return def
+            })
             .filter((b): b is BadgeDefinition => b !== null)
           
+          console.log('🏆 [Badges] Setting newly unlocked badges:', unlockedDefs.map(b => b.name))
+          console.log('🏆 [Badges] Badge definitions:', unlockedDefs)
           setNewlyUnlockedBadges(unlockedDefs)
-          console.log('[Badges] Unlocked:', unlockedDefs.map(b => b.name))
+          console.log('🏆 [Badges] State update triggered!')
+        } else {
+          console.log('[Badges] No badges unlocked this session')
         }
         
         if (badgeResult.streakUpdates.length > 0) {
@@ -763,6 +1018,7 @@ function App() {
     
     // === TELEMETRY: Stop monitoring ===
     try {
+      telemetryStats.deactivate()
       await tauriBridge.stopTelemetryMonitor()
       if (telemetryCleanupRef.current) {
         telemetryCleanupRef.current()
@@ -861,8 +1117,12 @@ function App() {
   // DELAY GATE HANDLERS (Flow Mode)
   // ============================================
 
-  const handleDelayGateReturnToWork = () => {
+  const handleDelayGateReturnToWork = async () => {
     console.log('[DelayGate] User chose to return to work')
+    
+    // Capture the triggering app before clearing state
+    const triggerApp = delayGateState.triggerApp
+    
     // Award bonus for returning to work
     const bonusResult = calculateBonus('delay_gate_returned', 
       (sessionManager.currentSession?.mode || 'Flow') as 'Zen' | 'Flow' | 'Legend'
@@ -879,6 +1139,30 @@ function App() {
     // Close the delay gate and resize back to HUD
     setDelayGateState(createInitialDelayGateState())
     resizeForPanel(null)
+    
+    // FLOW MODE FEATURE: Minimize the distracting app
+    if (triggerApp) {
+      console.log(`[DelayGate] 🔽 Minimizing distracting app: ${triggerApp}`)
+      try {
+        await tauriBridge.minimizeApp(triggerApp)
+        console.log(`[DelayGate] ✅ Minimized ${triggerApp}`)
+      } catch (err) {
+        console.error('[DelayGate] Failed to minimize app:', err)
+      }
+    }
+    
+    // Focus the last whitelisted app (alt-tab back to work!)
+    if (lastWhitelistedAppRef.current) {
+      console.log(`[DelayGate] 🎯 Focusing last whitelisted app: ${lastWhitelistedAppRef.current}`)
+      try {
+        const success = await tauriBridge.focusApp(lastWhitelistedAppRef.current)
+        if (success) {
+          console.log(`[DelayGate] ✅ Successfully switched to ${lastWhitelistedAppRef.current}`)
+        }
+      } catch (err) {
+        console.error('[DelayGate] Failed to focus app:', err)
+      }
+    }
   }
 
   const handleDelayGateProceed = () => {
@@ -910,8 +1194,12 @@ function App() {
     }
   }, [timer])
 
-  const handleBlockScreenAccept = () => {
+  const handleBlockScreenAccept = async () => {
     console.log('[LegendIntervention] User accepted and returned to work')
+    
+    // Capture the triggering browser/app before clearing state
+    const triggerBrowser = blockScreenState.triggerBrowser
+    const triggerApp = blockScreenState.triggerApp
     
     // Award small bonus for accepting the block gracefully
     const bonusResult = calculateBonus('block_accepted', 
@@ -929,6 +1217,41 @@ function App() {
     // Close the block screen and resize back to HUD
     setBlockScreenState(createInitialBlockScreenState())
     resizeForPanel(null)
+    
+    // LEGEND MODE FEATURE: Close the distracting browser tab
+    if (triggerBrowser) {
+      console.log(`[LegendIntervention] 🔥 Closing tab in browser: ${triggerBrowser}`)
+      try {
+        const success = await tauriBridge.closeBrowserTab(triggerBrowser)
+        if (success) {
+          console.log(`[LegendIntervention] ✅ Closed tab in ${triggerBrowser}`)
+        }
+      } catch (err) {
+        console.error('[LegendIntervention] Failed to close tab:', err)
+      }
+    } else if (triggerApp) {
+      // If it was an app (not browser), just minimize it
+      console.log(`[LegendIntervention] 🔽 Minimizing distracting app: ${triggerApp}`)
+      try {
+        await tauriBridge.minimizeApp(triggerApp)
+        console.log(`[LegendIntervention] ✅ Minimized ${triggerApp}`)
+      } catch (err) {
+        console.error('[LegendIntervention] Failed to minimize app:', err)
+      }
+    }
+    
+    // Focus the last whitelisted app (alt-tab back to work!)
+    if (lastWhitelistedAppRef.current) {
+      console.log(`[LegendIntervention] 🎯 Focusing last whitelisted app: ${lastWhitelistedAppRef.current}`)
+      try {
+        const success = await tauriBridge.focusApp(lastWhitelistedAppRef.current)
+        if (success) {
+          console.log(`[LegendIntervention] ✅ Successfully switched to ${lastWhitelistedAppRef.current}`)
+        }
+      } catch (err) {
+        console.error('[LegendIntervention] Failed to focus app:', err)
+      }
+    }
   }
 
   // ============================================
@@ -980,48 +1303,23 @@ function App() {
   }
 
   // ============================================
+  // RESIZE FOR RECOVERY MODAL
+  // ============================================
+  useEffect(() => {
+    if (mode === 'recovery' && recoveryData) {
+      resizeForPanel('recovery')
+    }
+  }, [mode, recoveryData])
+
+  // ============================================
   // RENDER: LOADING STATE
   // ============================================
-
   if (mode === 'loading') {
     return (
       <div className="w-full h-full bg-transparent flex items-center justify-center">
         <div className="w-[320px] h-[60px] rounded-full bg-[#0a0f0d]/90 backdrop-blur-xl border border-[#2f4a42]/40 shadow-2xl flex items-center justify-center">
           <div className="text-cyan-400 animate-pulse">Initializing...</div>
         </div>
-      </div>
-    )
-  }
-
-  // ============================================
-  // RENDER: RECOVERY MODAL
-  // ============================================
-
-  if (mode === 'recovery' && recoveryData) {
-    // Resize window for recovery modal
-    resizeForPanel('recovery')
-    
-    // Handle dragging for recovery modal
-    const handleRecoveryDrag = async (e: React.MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('button')) {
-        e.preventDefault()
-        const { startDragging } = await import('@/hooks/useTauriWindow')
-        await startDragging()
-      }
-    }
-    
-    return (
-      <div 
-        className="flex flex-col items-center p-4 cursor-grab active:cursor-grabbing"
-        onMouseDown={handleRecoveryDrag}
-      >
-        <InterruptedSessionModalAdapter
-          isOpen={true}
-          recoveryData={recoveryData}
-          onResume={handleRecoveryResume}
-          onDiscard={handleRecoveryDiscard}
-        />
       </div>
     )
   }
@@ -1062,6 +1360,18 @@ function App() {
           onReset={handleReset}
         />
 
+        {/* Recovery Modal - shows when session was interrupted */}
+        {mode === 'recovery' && recoveryData && (
+          <div className="mt-3">
+            <InterruptedSessionModalAdapter
+              isOpen={true}
+              recoveryData={recoveryData}
+              onResume={handleRecoveryResume}
+              onDiscard={handleRecoveryDiscard}
+            />
+          </div>
+        )}
+
         {/* Intervention Overlay */}
         {showInterventionOverlay && (
           <InterventionOverlayAdapter
@@ -1093,8 +1403,16 @@ function App() {
           />
         )}
 
+        {/* Permission Setup Panel - shows when permissions needed */}
+        {showPermissionSetup && (
+          <PermissionSetup
+            onComplete={() => setPermissionsComplete(true)}
+            onSkip={() => setSkippedPermissions(true)}
+          />
+        )}
+
         {/* Panels render below HUD */}
-        {currentPanel === 'calibration' && (
+        {currentPanel === 'calibration' && !showPermissionSetup && (
           <CalibrationPanelAdapter
             isOpen={true}
             onClose={handleClosePanel}
@@ -1143,34 +1461,7 @@ function App() {
           />
         )}
 
-        {currentPanel === 'postSessionSummary' && (
-          <PostSessionSummaryAdapter
-            isOpen={true}
-            session={sessionManager.currentSession}
-            telemetryStats={telemetryStats.stats}
-            onClose={handleClosePanel}
-            onContinueToReflection={handleContinueToReflection}
-          />
-        )}
-
-        {currentPanel === 'sessionReflection' && (
-          <SessionReflectionAdapter
-            isOpen={true}
-            session={sessionManager.currentSession}
-            onClose={handleClosePanel}
-            onComplete={handleReflectionComplete}
-          />
-        )}
-
-        {currentPanel === 'parkingLotHarvest' && (
-          <ParkingLotHarvestAdapter
-            isOpen={true}
-            onClose={handleHarvestComplete}
-            sessionId={sessionManager.sessionId || undefined}
-          />
-        )} 
-
-        {/* Badge Unlock Queue - shows newly unlocked badges after session */}
+        {/* Badge Unlock Queue - PRIORITY: shows above post-session panels */}
         {newlyUnlockedBadges.length > 0 && (
           <BadgeUnlockQueue
             badges={newlyUnlockedBadges}
@@ -1191,8 +1482,46 @@ function App() {
             onClose={() => setShareModalBadge(null)}
           />
         )}
+
+        {/* Post-session panels - show AFTER badge toast is dismissed */}
+        {currentPanel === 'postSessionSummary' && newlyUnlockedBadges.length === 0 && !shareModalBadge && (
+          <PostSessionSummaryAdapter
+            isOpen={true}
+            session={sessionManager.currentSession}
+            telemetryStats={telemetryStats.stats}
+            onClose={handleClosePanel}
+            onContinueToReflection={handleContinueToReflection}
+          />
+        )}
+
+        {currentPanel === 'sessionReflection' && newlyUnlockedBadges.length === 0 && !shareModalBadge && (
+          <SessionReflectionAdapter
+            isOpen={true}
+            session={sessionManager.currentSession}
+            onClose={handleClosePanel}
+            onComplete={handleReflectionComplete}
+          />
+        )}
+
+        {currentPanel === 'parkingLotHarvest' && newlyUnlockedBadges.length === 0 && !shareModalBadge && (
+          <ParkingLotHarvestAdapter
+            isOpen={true}
+            onClose={handleHarvestComplete}
+            sessionId={sessionManager.sessionId || undefined}
+          />
+        )}
        
       </div>
+      
+      {/* DEV ONLY - Badge Test Panel (Cmd/Ctrl + Shift + B to toggle) */}
+      <BadgeTestPanel
+        isOpen={showBadgeTestPanel}
+        onClose={() => {
+          setShowBadgeTestPanel(false)
+          resizeForPanel(currentPanel)
+        }}
+        onTriggerBadge={handleTestBadgeUnlock}
+      />
     </div>
   )
 }

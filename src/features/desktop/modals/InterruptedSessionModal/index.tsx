@@ -1,12 +1,16 @@
 
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Clock, Zap, Shield, Sparkles } from "lucide-react"
 
 interface InterruptedSessionModalProps {
   isOpen: boolean
   onContinue: () => void
   onDiscard: () => void
-  duration?: number
-  startTime?: number
+  duration?: number           // Planned duration in minutes
+  elapsedSeconds?: number     // How long the session was running
+  mode?: 'Zen' | 'Flow' | 'Legend'
+  bandwidth?: number          // Bandwidth at time of interruption
+  whitelistedAppsCount?: number
+  whitelistedTabsCount?: number
 }
 
 export function InterruptedSessionModal({
@@ -14,12 +18,37 @@ export function InterruptedSessionModal({
   onContinue,
   onDiscard,
   duration,
-  startTime,
+  elapsedSeconds,
+  mode,
+  bandwidth,
+  whitelistedAppsCount,
+  whitelistedTabsCount,
 }: InterruptedSessionModalProps) {
   if (!isOpen) return null
 
-  const elapsedMinutes = startTime ? Math.floor((Date.now() - startTime) / 60000) : null
-  const durationText = duration ? `${duration} minute${duration !== 1 ? "s" : ""}` : null
+  const elapsedMinutes = elapsedSeconds ? Math.floor(elapsedSeconds / 60) : 0
+  const remainingMinutes = duration && elapsedSeconds 
+    ? Math.max(0, duration - Math.floor(elapsedSeconds / 60))
+    : duration || 0
+  const durationText = duration ? `${duration} min` : null
+
+  const getModeIcon = () => {
+    switch (mode) {
+      case 'Zen': return <Sparkles className="w-4 h-4" />
+      case 'Flow': return <Zap className="w-4 h-4" />
+      case 'Legend': return <Shield className="w-4 h-4" />
+      default: return <Zap className="w-4 h-4" />
+    }
+  }
+
+  const getModeColor = () => {
+    switch (mode) {
+      case 'Zen': return 'text-purple-400'
+      case 'Flow': return 'text-blue-400'
+      case 'Legend': return 'text-amber-400'
+      default: return 'text-blue-400'
+    }
+  }
 
   return (
     <div className="flex items-center justify-center p-4">
@@ -31,13 +60,63 @@ export function InterruptedSessionModal({
           <div className="flex-1">
             <h3 className="text-lg font-medium text-white">Session Interrupted</h3>
             <p className="text-sm text-zinc-400 mt-1">
-              It looks like your previous session was interrupted. Would you like to continue where you left off?
+              Your session was interrupted. Continue where you left off?
             </p>
+          </div>
+        </div>
+
+        {/* Session Info */}
+        <div className="bg-zinc-900/50 rounded-lg p-4 space-y-3 border border-zinc-800">
+          {/* Mode and Time */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={getModeColor()}>{getModeIcon()}</span>
+              <span className={`text-sm font-medium ${getModeColor()}`}>
+                {mode || 'Flow'} Mode
+              </span>
+            </div>
             {durationText && (
-              <p className="text-xs text-emerald-400 mt-2">
-                Planned: {durationText}
-                {elapsedMinutes !== null && ` • Elapsed: ${elapsedMinutes} min`}
-              </p>
+              <div className="flex items-center gap-1.5 text-zinc-400">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-sm">{durationText} session</span>
+              </div>
+            )}
+          </div>
+
+          {/* Progress */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Progress</span>
+              <span className="text-emerald-400">
+                {elapsedMinutes} min elapsed • {remainingMinutes} min remaining
+              </span>
+            </div>
+            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+                style={{ width: `${duration ? Math.min(100, (elapsedMinutes / duration) * 100) : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div className="flex gap-4 text-xs pt-1">
+            {bandwidth !== undefined && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-zinc-400">Bandwidth: </span>
+                <span className="text-white font-medium">{Math.round(bandwidth)}%</span>
+              </div>
+            )}
+            {(whitelistedAppsCount !== undefined && whitelistedAppsCount > 0) && (
+              <div className="text-zinc-500">
+                {whitelistedAppsCount} app{whitelistedAppsCount !== 1 ? 's' : ''} whitelisted
+              </div>
+            )}
+            {(whitelistedTabsCount !== undefined && whitelistedTabsCount > 0) && (
+              <div className="text-zinc-500">
+                {whitelistedTabsCount} tab{whitelistedTabsCount !== 1 ? 's' : ''} whitelisted
+              </div>
             )}
           </div>
         </div>

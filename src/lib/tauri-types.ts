@@ -52,7 +52,7 @@ export interface WhitelistedTab {
 
 export type SessionMode = 'Zen' | 'Flow' | 'Legend'
 export type VictoryLevel = 'Minimum' | 'Good' | 'Legend' | 'Missed'
-export type EndReason = 'mission_complete' | 'stopping_early' | 'pulled_away'
+export type EndReason = 'completed' | 'mission_complete' | 'stopping_early' | 'pulled_away'
 
 export interface SessionRecord {
   sessionId: string
@@ -135,6 +135,8 @@ export interface RecoveryData {
   intention: string | null
   elapsedSeconds: number
   bandwidthAtPause: number | null // 0-100
+  whitelistedApps: string[]       // App names to whitelist
+  whitelistedTabs: string[]       // Domains/tabs to whitelist
 }
 
 // ============================================

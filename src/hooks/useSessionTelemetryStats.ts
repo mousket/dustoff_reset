@@ -92,6 +92,10 @@ interface UseSessionTelemetryStatsReturn {
   resetStats: () => void
   saveStats: () => Promise<void>
   loadStats: () => Promise<void>
+  
+  // Manual activation (for race condition fix)
+  activate: () => void
+  deactivate: () => void
 }
 
 /**
@@ -253,6 +257,19 @@ export function useSessionTelemetryStats({
     console.log('[TelemetryStats] Stats reset')
   }, [])
   
+  // Manual activation - call BEFORE setting up telemetry listeners
+  // This fixes race condition where listeners fire before React re-renders
+  const activate = useCallback(() => {
+    isActiveRef.current = true
+    console.log('[TelemetryStats] Manually activated')
+  }, [])
+  
+  // Manual deactivation
+  const deactivate = useCallback(() => {
+    isActiveRef.current = false
+    console.log('[TelemetryStats] Manually deactivated')
+  }, [])
+  
   // Save stats to database
   const saveStats = useCallback(async () => {
     if (!sessionId) {
@@ -311,6 +328,8 @@ export function useSessionTelemetryStats({
     resetStats,
     saveStats,
     loadStats,
+    activate,
+    deactivate,
   }
 }
 

@@ -41,12 +41,17 @@ export const BadgeShareModal: React.FC<BadgeShareModalProps> = ({
   onClose,
 }) => {
   const [copied, setCopied] = useState(false)
-  const { shareToTwitter, shareToClipboard, recordShare, buildShareText } = useShareBadge()
+  const { shareToTwitter, shareToLinkedIn, shareToClipboard, recordShare, buildShareText } = useShareBadge()
   const colors = RARITY_COLORS[badge.rarity]
   const glowColor = RARITY_GLOWS[badge.rarity]
 
   const handleTwitterShare = async () => {
-    shareToTwitter({ badge, stats })
+    await shareToTwitter({ badge, stats })
+    await recordShare()
+  }
+
+  const handleLinkedInShare = async () => {
+    await shareToLinkedIn({ badge, stats })
     await recordShare()
   }
 
@@ -63,10 +68,11 @@ export const BadgeShareModal: React.FC<BadgeShareModalProps> = ({
 
   const previewText = buildShareText({ badge, stats })
 
+  // Render as panel attached to HUD
   return (
     <div className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div 
-        className="relative flex flex-col items-center gap-4 p-5 rounded-2xl bg-[#0a0f0d]/95 backdrop-blur-xl border border-zinc-800/60 w-[440px]"
+        className="relative flex flex-col items-center gap-4 p-5 rounded-2xl bg-[#0a0f0d]/98 backdrop-blur-xl border border-zinc-800/60 w-[440px]"
         style={{
           boxShadow: `0 8px 40px rgba(0,0,0,0.6), 0 0 40px ${glowColor}, inset 0 1px 0 rgba(255,255,255,0.05)`,
         }}
@@ -138,28 +144,47 @@ export const BadgeShareModal: React.FC<BadgeShareModalProps> = ({
         </div>
         
         {/* Share Buttons */}
-        <div className="flex gap-2 w-full">
-          {/* Twitter/X Button */}
-          <button
-            onClick={handleTwitterShare}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-2',
-              'px-4 py-2.5 rounded-xl text-sm font-medium',
-              'bg-[#1DA1F2]/15 text-[#1DA1F2] border border-[#1DA1F2]/30',
-              'hover:bg-[#1DA1F2]/25 hover:border-[#1DA1F2]/50 transition-all duration-200'
-            )}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-            </svg>
-            Share on X
-          </button>
+        <div className="flex flex-col gap-2 w-full">
+          {/* Social Share Row */}
+          <div className="flex gap-2">
+            {/* Twitter/X Button */}
+            <button
+              onClick={handleTwitterShare}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2',
+                'px-4 py-2.5 rounded-xl text-sm font-medium',
+                'bg-[#1DA1F2]/15 text-[#1DA1F2] border border-[#1DA1F2]/30',
+                'hover:bg-[#1DA1F2]/25 hover:border-[#1DA1F2]/50 transition-all duration-200'
+              )}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              X
+            </button>
+            
+            {/* LinkedIn Button */}
+            <button
+              onClick={handleLinkedInShare}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2',
+                'px-4 py-2.5 rounded-xl text-sm font-medium',
+                'bg-[#0A66C2]/15 text-[#0A66C2] border border-[#0A66C2]/30',
+                'hover:bg-[#0A66C2]/25 hover:border-[#0A66C2]/50 transition-all duration-200'
+              )}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              LinkedIn
+            </button>
+          </div>
           
-          {/* Copy Button */}
+          {/* Copy Button Row */}
           <button
             onClick={handleCopyText}
             className={cn(
-              'flex-1 flex items-center justify-center gap-2',
+              'w-full flex items-center justify-center gap-2',
               'px-4 py-2.5 rounded-xl text-sm font-medium',
               'bg-zinc-800/50 text-zinc-300 border border-zinc-700/50',
               'hover:bg-zinc-700/50 hover:border-zinc-600/50 transition-all duration-200',

@@ -27,11 +27,13 @@ export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: Pa
 
   if (!isOpen) return null
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (newItemText.trim()) {
-      addParkingLotItem(newItemText.trim())
+      // Await the async operation to ensure cache is refreshed
+      await addParkingLotItem(newItemText.trim())
       setNewItemText("")
       if (onItemsChange) onItemsChange()
+      // Now get the updated items from the refreshed cache
       const loadedItems = getActiveParkingLotItems()
       setItems(loadedItems)
     }
@@ -42,9 +44,9 @@ export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: Pa
     setEditText(text)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editingId && editText.trim()) {
-      editParkingLotItemText(editingId, editText.trim())
+      await editParkingLotItemText(editingId, editText.trim())
       setEditingId(null)
       setEditText("")
       if (onItemsChange) onItemsChange()
@@ -53,19 +55,20 @@ export function ParkingLotManagementPanel({ isOpen, onClose, onItemsChange }: Pa
     }
   }
 
-  const handleDelete = (id: string) => {
-    deleteParkingLotItem(id)
-    if (onItemsChange) onItemsChange()
+  const handleDelete = async (id: string) => {
+    // Optimistically update UI first
     setItems((prev) => prev.filter((item) => item.id !== id))
+    await deleteParkingLotItem(id)
+    if (onItemsChange) onItemsChange()
   }
 
-  const handleStatusChange = (id: string, status: "new" | "in-progress" | "done") => {
+  const handleStatusChange = async (id: string, status: "new" | "in-progress" | "done") => {
     if (status === "done") {
-      completeParkingLotItem(id)
       setItems((prev) => prev.filter((item) => item.id !== id))
+      await completeParkingLotItem(id)
     } else {
-      updateParkingLotItemStatus(id, status)
       setItems((prev) => prev.map((item) => (item.id === id ? { ...item, itemStatus: status } : item)))
+      await updateParkingLotItemStatus(id, status)
     }
     if (onItemsChange) onItemsChange()
   }

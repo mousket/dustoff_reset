@@ -68,10 +68,52 @@ fn run_migrations(conn: &Connection) -> Result<(), String> {
     // Initialize telemetry tables (idempotent - uses CREATE IF NOT EXISTS)
     init_telemetry_tables(conn)?;
 
-    // Future migrations would go here:
-    // if current_version < 2 {
-    //     migrate_v2(conn)?;
-    // }
+    // Migration v2: Add whitelisted_apps and whitelisted_tabs to recovery_data
+    if current_version < 2 {
+        migrate_v2(conn)?;
+    }
+
+    Ok(())
+}
+
+/// Migration v2: Add whitelisted apps/tabs columns to recovery_data
+fn migrate_v2(conn: &Connection) -> Result<(), String> {
+    // Check if columns already exist (in case table was created fresh with v1)
+    let has_apps_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('recovery_data') WHERE name='whitelisted_apps'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0) > 0;
+
+    if !has_apps_column {
+        conn.execute(
+            "ALTER TABLE recovery_data ADD COLUMN whitelisted_apps TEXT DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| format!("Failed to add whitelisted_apps column: {}", e))?;
+    }
+
+    let has_tabs_column: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('recovery_data') WHERE name='whitelisted_tabs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0) > 0;
+
+    if !has_tabs_column {
+        conn.execute(
+            "ALTER TABLE recovery_data ADD COLUMN whitelisted_tabs TEXT DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| format!("Failed to add whitelisted_tabs column: {}", e))?;
+    }
+
+    // Update schema version
+    conn.execute("UPDATE schema_version SET version = 2", [])
+        .map_err(|e| format!("Failed to update schema version: {}", e))?;
 
     Ok(())
 }
@@ -170,7 +212,9 @@ fn migrate_v1(conn: &Connection) -> Result<(), String> {
             mode TEXT NOT NULL,
             intention TEXT,
             elapsed_seconds INTEGER NOT NULL,
-            bandwidth_at_pause REAL
+            bandwidth_at_pause REAL,
+            whitelisted_apps TEXT DEFAULT '[]',
+            whitelisted_tabs TEXT DEFAULT '[]'
         );
 
         -- ============================================

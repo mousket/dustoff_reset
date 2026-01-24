@@ -13,6 +13,9 @@ interface UseSessionTimerProps {
   mode: 'Zen' | 'Flow' | 'Legend'
   intention: string | null
   currentBandwidth: number
+  whitelistedApps: string[]   // For recovery data
+  whitelistedTabs: string[]   // For recovery data
+  initialElapsedSeconds?: number  // For resuming interrupted sessions
   onTimeUp: () => void
   onOvertime: () => void
 }
@@ -63,10 +66,13 @@ export function useSessionTimer({
   mode,
   intention,
   currentBandwidth,
+  whitelistedApps,
+  whitelistedTabs,
+  initialElapsedSeconds = 0,
   onTimeUp,
   onOvertime,
 }: UseSessionTimerProps): SessionTimerState {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds)
   const [isOvertime, setIsOvertime] = useState(false)
   const [extensionMinutes, setExtensionMinutes] = useState(0)
   
@@ -102,6 +108,8 @@ export function useSessionTimer({
       intention,
       elapsedSeconds,
       bandwidthAtPause: currentBandwidth,
+      whitelistedApps,
+      whitelistedTabs,
     }
     
     try {
@@ -110,7 +118,7 @@ export function useSessionTimer({
     } catch (error) {
       console.error('[Timer] Failed to save recovery data:', error)
     }
-  }, [sessionId, sessionStartedAt, plannedDurationMinutes, mode, intention, elapsedSeconds, currentBandwidth])
+  }, [sessionId, sessionStartedAt, plannedDurationMinutes, mode, intention, elapsedSeconds, currentBandwidth, whitelistedApps, whitelistedTabs])
   
   // Main timer effect
   useEffect(() => {
@@ -150,17 +158,17 @@ export function useSessionTimer({
     return () => clearInterval(interval)
   }, [isActive, isPaused, totalSeconds, onTimeUp, onOvertime, saveRecoveryData])
   
-  // Reset when session changes
+  // Reset when session changes (but respect initialElapsedSeconds for resumed sessions)
   useEffect(() => {
     if (sessionId) {
-      setElapsedSeconds(0)
+      setElapsedSeconds(initialElapsedSeconds)
       setIsOvertime(false)
       setExtensionMinutes(0)
       hasTriggeredTimeUp.current = false
       hasTriggeredOvertime.current = false
-      lastRecoverySave.current = 0
+      lastRecoverySave.current = initialElapsedSeconds
     }
-  }, [sessionId])
+  }, [sessionId, initialElapsedSeconds])
   
   // Save recovery data when pausing
   useEffect(() => {

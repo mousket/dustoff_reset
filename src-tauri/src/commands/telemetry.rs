@@ -158,3 +158,275 @@ pub fn get_system_browsers() -> Result<Vec<InstalledApp>, String> {
     println!("[Telemetry] Found {} browsers", browsers.len());
     Ok(browsers)
 }
+
+/// Focus/activate an application by name
+/// This brings the specified app to the foreground (like Alt+Tab)
+#[command]
+pub fn focus_app(app_name: String) -> Result<bool, String> {
+    println!("[Telemetry] Focusing app: {}", app_name);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // Use AppleScript to activate the app
+        let script = format!(
+            r#"tell application "{}" to activate"#,
+            app_name.replace("\"", "\\\"")
+        );
+        
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|e| format!("Failed to execute osascript: {}", e))?;
+        
+        if output.status.success() {
+            println!("[Telemetry] Successfully focused: {}", app_name);
+            Ok(true)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Telemetry] Failed to focus {}: {}", app_name, stderr);
+            // Try alternative method using open command
+            let open_output = Command::new("open")
+                .arg("-a")
+                .arg(&app_name)
+                .output()
+                .map_err(|e| format!("Failed to execute open: {}", e))?;
+            
+            if open_output.status.success() {
+                println!("[Telemetry] Successfully focused via open: {}", app_name);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows implementation would use SetForegroundWindow
+        // For now, return false as not implemented
+        println!("[Telemetry] Windows focus not implemented yet");
+        Ok(false)
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        
+        // Try using wmctrl to activate window
+        let output = Command::new("wmctrl")
+            .arg("-a")
+            .arg(&app_name)
+            .output();
+        
+        match output {
+            Ok(o) if o.status.success() => {
+                println!("[Telemetry] Successfully focused via wmctrl: {}", app_name);
+                Ok(true)
+            }
+            _ => {
+                println!("[Telemetry] Linux focus failed");
+                Ok(false)
+            }
+        }
+    }
+}
+
+/// Minimize an application's window (Flow Mode intervention)
+/// This hides the distracting app without closing it
+#[command]
+pub fn minimize_app(app_name: String) -> Result<bool, String> {
+    println!("[Telemetry] Minimizing app: {}", app_name);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // Use AppleScript to minimize the app's front window
+        let script = format!(
+            r#"tell application "System Events"
+                tell process "{}"
+                    try
+                        set visible to false
+                    end try
+                end tell
+            end tell"#,
+            app_name.replace("\"", "\\\"")
+        );
+        
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|e| format!("Failed to execute osascript: {}", e))?;
+        
+        if output.status.success() {
+            println!("[Telemetry] Successfully minimized: {}", app_name);
+            Ok(true)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Telemetry] Failed to minimize {}: {}", app_name, stderr);
+            Ok(false)
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        println!("[Telemetry] Windows minimize not implemented yet");
+        Ok(false)
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        
+        // Try using xdotool to minimize
+        let output = Command::new("xdotool")
+            .args(["search", "--name", &app_name, "windowminimize"])
+            .output();
+        
+        match output {
+            Ok(o) if o.status.success() => {
+                println!("[Telemetry] Successfully minimized via xdotool: {}", app_name);
+                Ok(true)
+            }
+            _ => {
+                println!("[Telemetry] Linux minimize failed");
+                Ok(false)
+            }
+        }
+    }
+}
+
+/// Close the current tab in a browser (Legend Mode intervention)
+/// This is a strict intervention that closes the distracting content
+#[command]
+pub fn close_browser_tab(browser_name: String) -> Result<bool, String> {
+    println!("[Telemetry] Closing tab in browser: {}", browser_name);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // Different browsers need different AppleScript
+        let script = if browser_name.to_lowercase().contains("chrome") {
+            r#"tell application "Google Chrome"
+                if (count of windows) > 0 then
+                    tell front window
+                        if (count of tabs) > 1 then
+                            close active tab
+                        else
+                            close
+                        end if
+                    end tell
+                end if
+            end tell"#.to_string()
+        } else if browser_name.to_lowercase().contains("safari") {
+            r#"tell application "Safari"
+                if (count of windows) > 0 then
+                    tell front window
+                        if (count of tabs) > 1 then
+                            close current tab
+                        else
+                            close
+                        end if
+                    end tell
+                end if
+            end tell"#.to_string()
+        } else if browser_name.to_lowercase().contains("firefox") {
+            // Firefox needs a different approach - use Cmd+W
+            r#"tell application "System Events"
+                tell process "Firefox"
+                    keystroke "w" using command down
+                end tell
+            end tell"#.to_string()
+        } else if browser_name.to_lowercase().contains("arc") {
+            r#"tell application "Arc"
+                if (count of windows) > 0 then
+                    tell front window
+                        close active tab
+                    end tell
+                end if
+            end tell"#.to_string()
+        } else if browser_name.to_lowercase().contains("brave") {
+            // Brave is Chromium-based, similar to Chrome
+            r#"tell application "Brave Browser"
+                if (count of windows) > 0 then
+                    tell front window
+                        if (count of tabs) > 1 then
+                            close active tab
+                        else
+                            close
+                        end if
+                    end tell
+                end if
+            end tell"#.to_string()
+        } else if browser_name.to_lowercase().contains("edge") {
+            r#"tell application "Microsoft Edge"
+                if (count of windows) > 0 then
+                    tell front window
+                        if (count of tabs) > 1 then
+                            close active tab
+                        else
+                            close
+                        end if
+                    end tell
+                end if
+            end tell"#.to_string()
+        } else {
+            // Generic fallback - use Cmd+W keyboard shortcut
+            format!(
+                r#"tell application "System Events"
+                    tell process "{}"
+                        keystroke "w" using command down
+                    end tell
+                end tell"#,
+                browser_name.replace("\"", "\\\"")
+            )
+        };
+        
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|e| format!("Failed to execute osascript: {}", e))?;
+        
+        if output.status.success() {
+            println!("[Telemetry] Successfully closed tab in: {}", browser_name);
+            Ok(true)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Telemetry] Failed to close tab in {}: {}", browser_name, stderr);
+            Ok(false)
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        println!("[Telemetry] Windows close tab not implemented yet");
+        Ok(false)
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        
+        // Use xdotool to send Ctrl+W
+        let output = Command::new("xdotool")
+            .args(["key", "--window", "$(xdotool getactivewindow)", "ctrl+w"])
+            .output();
+        
+        match output {
+            Ok(o) if o.status.success() => {
+                println!("[Telemetry] Successfully sent Ctrl+W");
+                Ok(true)
+            }
+            _ => {
+                println!("[Telemetry] Linux close tab failed");
+                Ok(false)
+            }
+        }
+    }
+}

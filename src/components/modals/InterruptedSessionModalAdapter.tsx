@@ -44,18 +44,17 @@ export function InterruptedSessionModalAdapter({
 }: InterruptedSessionModalAdapterProps) {
   if (!isOpen || !recoveryData) return null
 
-  // Calculate start time as timestamp for the modal
-  const startTime = recoveryData.startedAt 
-    ? new Date(recoveryData.startedAt).getTime() 
-    : undefined
-
   return (
     <InterruptedSessionModal
       isOpen={isOpen}
       onContinue={onResume}
       onDiscard={onDiscard}
       duration={recoveryData.plannedDurationMinutes}
-      startTime={startTime}
+      elapsedSeconds={recoveryData.elapsedSeconds}
+      mode={recoveryData.mode}
+      bandwidth={recoveryData.bandwidthAtPause ?? undefined}
+      whitelistedAppsCount={recoveryData.whitelistedApps?.length}
+      whitelistedTabsCount={recoveryData.whitelistedTabs?.length}
     />
   )
 }

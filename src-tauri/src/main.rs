@@ -2,10 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod badges;
-mod commands;
 mod models;
+mod permissions;
 mod storage;
 mod telemetry;
+mod commands;
 
 use std::sync::Mutex;
 use storage::init_database;
@@ -16,6 +17,15 @@ use dustoff_reset_lib::AppState;
 
 // Import TelemetryState for managing telemetry
 use commands::telemetry::TelemetryState;
+
+// Import permission commands
+use commands::permissions::{
+    check_permissions,
+    are_all_permissions_granted,
+    open_system_permissions,
+    get_current_platform,
+    request_permission,
+};
 
 fn main() {
     tauri::Builder::default()
@@ -102,6 +112,9 @@ fn main() {
             commands::telemetry::save_telemetry_stats,
             commands::telemetry::get_system_apps,
             commands::telemetry::get_system_browsers,
+            commands::telemetry::focus_app,
+            commands::telemetry::minimize_app,
+            commands::telemetry::close_browser_tab,
             // Badge commands
             commands::badges::init_badges,
             commands::badges::get_badges,
@@ -114,6 +127,12 @@ fn main() {
             commands::badges::evaluate_badges_for_session,
             commands::badges::get_badge_count,
             commands::badges::record_badge_share,
+            // Permissions commands
+            check_permissions,
+            are_all_permissions_granted,
+            open_system_permissions,
+            get_current_platform,
+            request_permission,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

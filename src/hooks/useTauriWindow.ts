@@ -16,10 +16,12 @@ export const PANEL_DIMENSIONS = {
   sessionReflection: { width: 600, height: 640 },// Reflection questions (increased)
   flowCelebration: { width: 540, height: 300 },  // Flow celebration
   endSession: { width: 560, height: 680 },       // End session modal (taller for expanded sub-options)
-  recovery: { width: 520, height: 300 },         // Recovery modal (with padding for drag area)
+  recovery: { width: 520, height: 580 },         // Recovery/Interrupted session modal (HUD + modal + padding)
   intervention: { width: 520, height: 720 },     // All intervention screens (Flow + Legend, dynamic content)
-  badgeNotification: { width: 320, height: 200 },// Badge unlock toast (HUD + compact notification)
-  badgeShareModal: { width: 460, height: 620 },  // Badge share modal (scaled card + buttons)
+  badgeNotification: { width: 440, height: 280 },// Badge unlock toast (HUD + notification with full text visible)
+  badgeShareModal: { width: 460, height: 780 },  // Badge share modal (scaled card + buttons + preview)
+  permissionSetup: { width: 440, height: 420 },  // Permission setup panel (compact)
+  permissionSetupExpanded: { width: 440, height: 620 },  // Permission setup with instructions + error + proceed
 } as const
 
 export type PanelType = keyof typeof PANEL_DIMENSIONS

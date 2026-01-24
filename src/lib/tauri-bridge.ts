@@ -20,6 +20,8 @@ import type {
   SessionStatsForBadges 
 } from '@/lib/badges/types'
 
+import type { PermissionState } from '@/lib/permissions/types'
+
 // Telemetry stats type (matching Rust SessionTelemetryStats)
 export interface SessionTelemetryStats {
   appSwitches: number
@@ -223,6 +225,28 @@ export const tauriBridge = {
   getSystemBrowsers: (): Promise<InstalledApp[]> =>
     invoke('get_system_browsers'),
 
+  /**
+   * Focus/activate an application by name (like Alt+Tab)
+   * Brings the specified app to the foreground
+   * Returns true if successful, false otherwise
+   */
+  focusApp: (appName: string): Promise<boolean> =>
+    invoke('focus_app', { appName }),
+
+  /**
+   * Minimize an application's window (Flow Mode intervention)
+   * Hides the distracting app without closing it
+   */
+  minimizeApp: (appName: string): Promise<boolean> =>
+    invoke('minimize_app', { appName }),
+
+  /**
+   * Close the current tab in a browser (Legend Mode intervention)
+   * A strict intervention that closes the distracting content
+   */
+  closeBrowserTab: (browserName: string): Promise<boolean> =>
+    invoke('close_browser_tab', { browserName }),
+
   // ============================================
   // BADGES & STREAKS
   // ============================================
@@ -293,6 +317,30 @@ export const tauriBridge = {
    */
   recordBadgeShare: async (): Promise<number> => {
     return invoke('record_badge_share')
+  },
+
+  // ============================================
+  // PERMISSIONS
+  // ============================================
+
+  checkPermissions: async (): Promise<PermissionState> => {
+    return invoke('check_permissions')
+  },
+
+  areAllPermissionsGranted: async (): Promise<boolean> => {
+    return invoke('are_all_permissions_granted')
+  },
+
+  openSystemPermissions: async (): Promise<void> => {
+    return invoke('open_system_permissions')
+  },
+
+  getCurrentPlatform: async (): Promise<string> => {
+    return invoke('get_current_platform')
+  },
+
+  requestPermission: async (permissionType: string): Promise<void> => {
+    return invoke('request_permission', { permissionType })
   },
 
 }

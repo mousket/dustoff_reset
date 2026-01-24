@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Apple signing (NEVER commit these)
+*.p12
+*.cer
+*.certSigningRequest
+*.provisionprofile
+.env.signing
+signing-secrets.sh

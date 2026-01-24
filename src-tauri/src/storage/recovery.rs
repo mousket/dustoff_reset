@@ -25,12 +25,18 @@ fn mode_from_string(s: &str) -> SessionMode {
 /// This overwrites any existing recovery data.
 pub fn save_recovery_data(conn: &Connection, data: &RecoveryData) -> Result<(), String> {
     let mode_str = mode_to_string(&data.mode);
+    
+    // Serialize whitelisted apps/tabs as JSON
+    let apps_json = serde_json::to_string(&data.whitelisted_apps)
+        .unwrap_or_else(|_| "[]".to_string());
+    let tabs_json = serde_json::to_string(&data.whitelisted_tabs)
+        .unwrap_or_else(|_| "[]".to_string());
 
     conn.execute(
         r#"
         INSERT OR REPLACE INTO recovery_data 
-        (id, session_id, started_at, planned_duration_minutes, mode, intention, elapsed_seconds, bandwidth_at_pause)
-        VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        (id, session_id, started_at, planned_duration_minutes, mode, intention, elapsed_seconds, bandwidth_at_pause, whitelisted_apps, whitelisted_tabs)
+        VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         "#,
         params![
             data.session_id,
@@ -40,6 +46,8 @@ pub fn save_recovery_data(conn: &Connection, data: &RecoveryData) -> Result<(), 
             data.intention,
             data.elapsed_seconds,
             data.bandwidth_at_pause,
+            apps_json,
+            tabs_json,
         ],
     )
     .map_err(|e| format!("Failed to save recovery data: {}", e))?;
@@ -53,7 +61,8 @@ pub fn get_recovery_data(conn: &Connection) -> Result<Option<RecoveryData>, Stri
     let result = conn.query_row(
         r#"
         SELECT session_id, started_at, planned_duration_minutes, mode, 
-               intention, elapsed_seconds, bandwidth_at_pause
+               intention, elapsed_seconds, bandwidth_at_pause, 
+               whitelisted_apps, whitelisted_tabs
         FROM recovery_data 
         WHERE id = 1
         "#,
@@ -66,6 +75,12 @@ pub fn get_recovery_data(conn: &Connection) -> Result<Option<RecoveryData>, Stri
             let intention: Option<String> = row.get(4)?;
             let elapsed_seconds: i64 = row.get(5)?;
             let bandwidth_at_pause: Option<f64> = row.get(6)?;
+            let apps_json: String = row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "[]".to_string());
+            let tabs_json: String = row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "[]".to_string());
+            
+            // Deserialize whitelisted apps/tabs from JSON
+            let whitelisted_apps: Vec<String> = serde_json::from_str(&apps_json).unwrap_or_default();
+            let whitelisted_tabs: Vec<String> = serde_json::from_str(&tabs_json).unwrap_or_default();
 
             Ok(RecoveryData {
                 session_id,
@@ -75,6 +90,8 @@ pub fn get_recovery_data(conn: &Connection) -> Result<Option<RecoveryData>, Stri
                 intention,
                 elapsed_seconds,
                 bandwidth_at_pause,
+                whitelisted_apps,
+                whitelisted_tabs,
             })
         },
     );
@@ -163,7 +180,9 @@ mod tests {
                 mode TEXT NOT NULL,
                 intention TEXT,
                 elapsed_seconds INTEGER NOT NULL,
-                bandwidth_at_pause REAL
+                bandwidth_at_pause REAL,
+                whitelisted_apps TEXT DEFAULT '[]',
+                whitelisted_tabs TEXT DEFAULT '[]'
             );
             "#,
         )
@@ -180,6 +199,8 @@ mod tests {
             intention: Some("Deep work on project".to_string()),
             elapsed_seconds: 1800, // 30 minutes
             bandwidth_at_pause: Some(75.5),
+            whitelisted_apps: vec!["VS Code".to_string(), "Terminal".to_string()],
+            whitelisted_tabs: vec!["github.com".to_string()],
         }
     }
 
@@ -201,6 +222,8 @@ mod tests {
         assert_eq!(loaded.intention, Some("Deep work on project".to_string()));
         assert_eq!(loaded.elapsed_seconds, 1800);
         assert_eq!(loaded.bandwidth_at_pause, Some(75.5));
+        assert_eq!(loaded.whitelisted_apps, vec!["VS Code".to_string(), "Terminal".to_string()]);
+        assert_eq!(loaded.whitelisted_tabs, vec!["github.com".to_string()]);
     }
 
     #[test]
@@ -227,6 +250,8 @@ mod tests {
             intention: None,
             elapsed_seconds: 900,
             bandwidth_at_pause: None,
+            whitelisted_apps: vec![],
+            whitelisted_tabs: vec![],
         };
 
         save_recovery_data(&conn, &recovery2).unwrap();
@@ -312,6 +337,8 @@ mod tests {
                 intention: None,
                 elapsed_seconds: 0,
                 bandwidth_at_pause: None,
+                whitelisted_apps: vec![],
+                whitelisted_tabs: vec![],
             };
 
             save_recovery_data(&conn, &recovery).unwrap();
@@ -334,6 +361,8 @@ mod tests {
             intention: None,
             elapsed_seconds: 0,
             bandwidth_at_pause: None,
+            whitelisted_apps: vec![],
+            whitelisted_tabs: vec![],
         };
 
         save_recovery_data(&conn, &recovery).unwrap();
@@ -341,5 +370,7 @@ mod tests {
         let loaded = get_recovery_data(&conn).unwrap().unwrap();
         assert!(loaded.intention.is_none());
         assert!(loaded.bandwidth_at_pause.is_none());
+        assert!(loaded.whitelisted_apps.is_empty());
+        assert!(loaded.whitelisted_tabs.is_empty());
     }
 }

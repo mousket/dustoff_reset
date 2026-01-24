@@ -7,6 +7,7 @@ import { DelayGate } from '@/features/desktop/overlays/DelayGate'
 export interface DelayGateState {
   isOpen: boolean
   triggerName: string
+  triggerApp?: string  // The actual app name (for minimize on return)
   category: string
   delaySeconds: number
   offenseNumber: number

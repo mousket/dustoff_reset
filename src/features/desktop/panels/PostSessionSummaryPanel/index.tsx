@@ -99,61 +99,67 @@ export function PostSessionSummaryPanel({
         <span className={`text-xs font-medium ${colors.text}`}>{session.mode} Mode</span>
       </div>
 
-      {/* Metrics Grid - compact with tooltips */}
-      <div className="grid grid-cols-5 gap-2">
-        <div 
-          className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
-          title="Percentage of time you were in a focused flow state (bandwidth > 70 sustained)"
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <Zap className="w-3 h-3 text-emerald-400" />
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Flow</span>
+      {/* Metrics Grid - Victory & Flow on top, others below */}
+      <div className="space-y-2">
+        {/* Top row: Victory & Flow */}
+        <div className="grid grid-cols-2 gap-2">
+          <div 
+            className={`bg-zinc-900/50 border rounded-lg p-3 cursor-help transition-all hover:border-zinc-700 ${colors.border}/30`}
+            title="Your achievement level based on session completion percentage and distraction resistance"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className={`w-2 h-2 rounded-full ${colors.bg}`} />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Victory</span>
+            </div>
+            <div className={`text-xl font-bold ${colors.text}`}>{session.victoryLevel}</div>
           </div>
-          <div className="text-lg font-bold text-white">{session.flowEfficiency ?? 0}%</div>
+
+          <div 
+            className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 cursor-help transition-all hover:border-zinc-700"
+            title="Percentage of time you were in a focused flow state (bandwidth > 70 sustained)"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Flow Efficiency</span>
+            </div>
+            <div className="text-xl font-bold text-white">{session.flowEfficiency ?? 0}%</div>
+          </div>
         </div>
 
-        <div 
-          className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
-          title="Longest continuous period of focused work without distractions"
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <Target className="w-3 h-3 text-cyan-400" />
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Streak</span>
+        {/* Bottom row: Streak, Distractions, Interventions */}
+        <div className="grid grid-cols-3 gap-2">
+          <div 
+            className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
+            title="Longest continuous period of focused work without distractions"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Target className="w-3 h-3 text-cyan-400" />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Streak</span>
+            </div>
+            <div className="text-lg font-bold text-white">{session.longestStreakMinutes}m</div>
           </div>
-          <div className="text-lg font-bold text-white">{session.longestStreakMinutes}m</div>
-        </div>
 
-        <div 
-          className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
-          title="Times you switched to distracting apps or websites during the session"
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <AlertTriangle className="w-3 h-3 text-amber-400" />
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Distractions</span>
+          <div 
+            className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
+            title="Times you switched to distracting apps or websites during the session"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Distractions</span>
+            </div>
+            <div className="text-lg font-bold text-white">{session.distractionAttempts}</div>
           </div>
-          <div className="text-lg font-bold text-white">{session.distractionAttempts}</div>
-        </div>
 
-        <div 
-          className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
-          title="Number of intervention screens shown (Delay Gate or Block Screen)"
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <Clock className="w-3 h-3 text-purple-400" />
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Interventions</span>
+          <div 
+            className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700"
+            title="Number of intervention screens shown (Delay Gate or Block Screen)"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <Clock className="w-3 h-3 text-purple-400" />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Interventions</span>
+            </div>
+            <div className="text-lg font-bold text-white">{session.interventionsUsed}</div>
           </div>
-          <div className="text-lg font-bold text-white">{session.interventionsUsed}</div>
-        </div>
-
-        <div 
-          className={`bg-zinc-900/50 border rounded-lg p-2.5 cursor-help transition-all hover:border-zinc-700 ${colors.border}/30`}
-          title="Your achievement level based on session completion percentage and distraction resistance"
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <div className={`w-2 h-2 rounded-full ${colors.bg}`} />
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Victory</span>
-          </div>
-          <div className={`text-lg font-bold ${colors.text}`}>{session.victoryLevel}</div>
         </div>
       </div>
 

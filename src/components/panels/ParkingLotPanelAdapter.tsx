@@ -38,9 +38,9 @@ export function ParkingLotPanelAdapter({
     }
   }, [isOpen])
   
-  const handleItemsChange = (action?: { action: string; id?: string; text?: string }) => {
+  const handleItemsChange = async (action?: { action: string; id?: string; text?: string }) => {
     // Refresh cache after any change
-    refreshParkingLotCache()
+    await refreshParkingLotCache()
     
     // Notify parent if callback provided
     if (onItemsChange) {

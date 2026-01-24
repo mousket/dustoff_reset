@@ -10,6 +10,7 @@ use std::sync::Mutex;
 pub mod badges;
 pub mod commands;
 pub mod models;
+pub mod permissions;
 pub mod storage;
 pub mod telemetry;
 

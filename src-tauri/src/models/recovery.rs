@@ -22,6 +22,12 @@ pub struct RecoveryData {
     pub elapsed_seconds: i64,
     /// Bandwidth level at time of pause
     pub bandwidth_at_pause: Option<f64>,
+    /// Whitelisted apps (stored as JSON array)
+    #[serde(default)]
+    pub whitelisted_apps: Vec<String>,
+    /// Whitelisted tabs/domains (stored as JSON array)
+    #[serde(default)]
+    pub whitelisted_tabs: Vec<String>,
 }
 
 impl RecoveryData {
@@ -40,6 +46,31 @@ impl RecoveryData {
             intention: None,
             elapsed_seconds: 0,
             bandwidth_at_pause: None,
+            whitelisted_apps: Vec::new(),
+            whitelisted_tabs: Vec::new(),
+        }
+    }
+
+    /// Create new recovery data with full session config
+    pub fn with_config(
+        session_id: String,
+        started_at: String,
+        planned_duration_minutes: i32,
+        mode: SessionMode,
+        intention: Option<String>,
+        whitelisted_apps: Vec<String>,
+        whitelisted_tabs: Vec<String>,
+    ) -> Self {
+        Self {
+            session_id,
+            started_at,
+            planned_duration_minutes,
+            mode,
+            intention,
+            elapsed_seconds: 0,
+            bandwidth_at_pause: None,
+            whitelisted_apps,
+            whitelisted_tabs,
         }
     }
 

@@ -7,6 +7,8 @@ import { BlockScreen } from '@/features/desktop/overlays/BlockScreen'
 export interface BlockScreenState {
   isOpen: boolean
   triggerName: string
+  triggerApp?: string   // The actual app name (for minimize)
+  triggerBrowser?: string  // Browser name (for closing tab in Legend mode)
   category: string
   offenseNumber: number
   message: string

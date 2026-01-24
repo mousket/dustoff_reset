@@ -30,6 +30,7 @@ interface BandwidthActions {
   applyTelemetryPenalty: (penalty: number, reason?: string) => void
   applyTelemetryBonus: (bonus: number, reason?: string) => void
   resetEngine: () => void
+  restoreBandwidth: (value: number) => void  // For session recovery
 }
 
 // Decay rates per mode (bandwidth points per minute)
@@ -327,6 +328,16 @@ export function useBandwidthEngine({
   }, [])
   
   /**
+   * Restore bandwidth to a specific value (for session recovery)
+   */
+  const restoreBandwidth = useCallback((value: number) => {
+    const clampedValue = Math.max(0, Math.min(100, value))
+    setBandwidth(clampedValue)
+    lastBandwidth.current = clampedValue
+    console.log(`[BandwidthEngine] Bandwidth restored to: ${clampedValue}`)
+  }, [])
+  
+  /**
    * Reset the engine to initial state
    */
   const resetEngine = useCallback(() => {
@@ -361,6 +372,7 @@ export function useBandwidthEngine({
     applyTelemetryPenalty,
     applyTelemetryBonus,
     resetEngine,
+    restoreBandwidth,
   }
 }
 

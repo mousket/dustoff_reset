@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { BadgeDefinition, RARITY_COLORS } from '@/lib/badges/types'
 import { cn } from '@/lib/utils'
-import { Share2, X } from 'lucide-react'
+import { Share2 } from 'lucide-react'
 
 interface BadgeUnlockToastProps {
   badge: BadgeDefinition
@@ -32,7 +32,7 @@ export const BadgeUnlockToast: React.FC<BadgeUnlockToastProps> = ({
   isOpen,
   onClose,
   onShare,
-  duration = 5000,
+  duration = 15000, // 15 seconds - give user time to read and decide to share
 }) => {
   const colors = RARITY_COLORS[badge.rarity]
   const glowColor = RARITY_GLOWS[badge.rarity]
@@ -54,64 +54,70 @@ export const BadgeUnlockToast: React.FC<BadgeUnlockToastProps> = ({
     <div className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div
         className={cn(
-          'flex items-center gap-4 p-4 rounded-2xl',
-          'bg-[#0a0f0d]/95 backdrop-blur-xl',
-          'border',
+          'flex flex-col gap-3 p-4 rounded-2xl',
+          'bg-[#0a0f0d]/98 backdrop-blur-xl',
+          'border-2',
           colors.border,
-          'w-[320px]'
+          'w-[400px]'
         )}
         style={{
-          boxShadow: `0 8px 32px rgba(0,0,0,0.6), 0 0 40px ${glowColor}, inset 0 1px 0 rgba(255,255,255,0.05)`,
+          boxShadow: `0 12px 40px rgba(0,0,0,0.7), 0 0 60px ${glowColor}, inset 0 1px 0 rgba(255,255,255,0.08)`,
         }}
       >
-        {/* Badge Icon with Glow */}
-        <div
-          className={cn(
-            'w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-full',
-            'border',
-            colors.border,
-          )}
-          style={{
-            background: `radial-gradient(circle at 30% 30%, ${glowColor}, transparent 70%)`,
-            boxShadow: `0 0 25px ${glowColor}`,
-          }}
-        >
-          <span className="text-2xl">{badge.icon}</span>
+        {/* Top row: Icon + Content */}
+        <div className="flex items-center gap-4">
+          {/* Badge Icon with Glow */}
+          <div
+            className={cn(
+              'w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-full',
+              'border',
+              colors.border,
+            )}
+            style={{
+              background: `radial-gradient(circle at 30% 30%, ${glowColor}, transparent 70%)`,
+              boxShadow: `0 0 25px ${glowColor}`,
+            }}
+          >
+            <span className="text-2xl">{badge.icon}</span>
+          </div>
+          
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-medium mb-0.5">
+              Badge Unlocked
+            </p>
+            <p className="font-bold text-base text-zinc-100">
+              {badge.name}
+            </p>
+            <p className="text-xs text-zinc-500 italic">
+              "{badge.flavorText}"
+            </p>
+          </div>
         </div>
         
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-medium mb-0.5">
-            Badge Unlocked
-          </p>
-          <p className="font-bold text-sm text-zinc-100 truncate">
-            {badge.name}
-          </p>
-          <p className="text-[11px] text-zinc-500 line-clamp-1 italic">
-            "{badge.flavorText}"
-          </p>
-        </div>
-        
-        {/* Actions */}
-        <div className="flex flex-col gap-1.5 flex-shrink-0">
+        {/* Bottom row: Actions */}
+        <div className="flex items-center gap-2">
           {onShare && (
             <button
               onClick={onShare}
               className={cn(
-                'flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium',
-                'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-                'hover:bg-emerald-500/30 hover:border-emerald-500/50 transition-all duration-200'
+                'flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold',
+                'bg-gradient-to-r from-emerald-500/30 to-emerald-600/20 text-emerald-300',
+                'border border-emerald-500/40',
+                'hover:from-emerald-500/40 hover:to-emerald-600/30 hover:text-emerald-200',
+                'hover:border-emerald-400/60',
+                'transition-all duration-200 shadow-lg shadow-emerald-500/20'
               )}
             >
-              <Share2 className="w-3 h-3" />
+              <Share2 className="w-4 h-4" />
               Share
             </button>
           )}
           <button
             onClick={onClose}
-            className="flex items-center justify-center text-zinc-600 hover:text-zinc-400 transition-colors p-1"
+            className="px-4 py-2.5 rounded-xl text-sm text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            Dismiss
           </button>
         </div>
       </div>
@@ -120,6 +126,7 @@ export const BadgeUnlockToast: React.FC<BadgeUnlockToastProps> = ({
 }
 
 // Queue manager for multiple badge unlocks
+// Now renders as a fixed overlay that floats on top of everything
 interface BadgeQueueManagerProps {
   badges: BadgeDefinition[]
   onShare?: (badge: BadgeDefinition) => void
@@ -153,13 +160,14 @@ export const BadgeUnlockQueue: React.FC<BadgeQueueManagerProps> = ({
 
   if (!currentBadge) return null
 
+  // Render as panel attached to HUD (not floating overlay)
   return (
     <BadgeUnlockToast
       badge={currentBadge}
       isOpen={true}
       onClose={handleClose}
       onShare={onShare ? () => onShare(currentBadge) : undefined}
-      duration={4000}
+      duration={15000} // 15 seconds - give user time to read and share
     />
   )
 }

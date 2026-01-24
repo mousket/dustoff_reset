@@ -126,6 +126,7 @@ pub struct BadgeDefinition {
 
 /// A user's unlocked badge
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UserBadge {
     /// Unique instance ID
     pub id: String,
@@ -145,6 +146,7 @@ pub struct UserBadge {
 
 /// Streak information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Streak {
     /// Unique ID
     pub id: String,
@@ -170,6 +172,7 @@ pub struct Streak {
 
 /// Progress toward a progressive badge
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BadgeProgress {
     /// Badge ID this progress is for
     pub badge_id: String,
@@ -186,6 +189,7 @@ pub struct BadgeProgress {
 
 /// Result of badge evaluation after a session
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BadgeEvaluationResult {
     /// Newly unlocked badges
     pub unlocked: Vec<UserBadge>,
@@ -199,6 +203,7 @@ pub struct BadgeEvaluationResult {
 
 /// Stats needed for badge evaluation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionStatsForBadges {
     pub session_id: String,
     pub mode: String,

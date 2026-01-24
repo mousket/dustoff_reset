@@ -45,8 +45,12 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
   // New state for system apps
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([])
   const [installedBrowsers, setInstalledBrowsers] = useState<InstalledApp[]>([])
-  const [isLoadingApps, setIsLoadingApps] = useState(false)
   const [showAppDropdown, setShowAppDropdown] = useState(false)
+  
+  // Loading transition state (between step 2 and 3)
+  const [isPreparingSession, setIsPreparingSession] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(0)
+  const [loadingMessage, setLoadingMessage] = useState("")
 
   // Load parking lot items when panel opens (lightweight)
   useEffect(() => {
@@ -62,37 +66,62 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
     }
   }, [isOpen])
   
-  // Fetch installed apps ONLY when reaching whitelist step (step 3)
-  // This prevents the UI freeze on panel open
-  useEffect(() => {
-    if (isOpen && step === 3 && installedApps.length === 0 && !isLoadingApps) {
-      const fetchApps = async () => {
-        setIsLoadingApps(true)
-        try {
-          // Fetch apps and browsers in parallel
-          const [apps, browsers] = await Promise.all([
-            tauriBridge.getSystemApps(),
-            tauriBridge.getSystemBrowsers(),
-          ])
-          setInstalledApps(apps)
-          setInstalledBrowsers(browsers)
-          
-          // Set default browser if we found browsers
-          if (browsers.length > 0 && !whitelistedBrowser) {
-            // Prefer Chrome, Safari, or first browser
-            const chrome = browsers.find(b => b.name.toLowerCase().includes('chrome'))
-            const safari = browsers.find(b => b.name.toLowerCase().includes('safari'))
-            setWhitelistedBrowser(chrome?.name || safari?.name || browsers[0].name)
-          }
-        } catch (error) {
-          console.error('[PreSession] Failed to fetch apps:', error)
-        } finally {
-          setIsLoadingApps(false)
-        }
+  // Prepare session: Load apps, browsers, and configure interventions
+  // This runs as a transition between step 2 and step 3
+  // Note: isPreparingSession is already set to true before this is called
+  const prepareSessionConfiguration = async () => {
+    try {
+      // Small delay to ensure the loading screen renders first
+      await new Promise(resolve => setTimeout(resolve, 50))
+      
+      // Stage 1: Load system applications (0-40%)
+      setLoadingMessage("Scanning installed applications...")
+      setLoadingProgress(10)
+      
+      const apps = await tauriBridge.getSystemApps()
+      setInstalledApps(apps)
+      setLoadingProgress(40)
+      
+      // Stage 2: Load browsers (40-70%)
+      setLoadingMessage("Detecting browsers...")
+      const browsers = await tauriBridge.getSystemBrowsers()
+      setInstalledBrowsers(browsers)
+      setLoadingProgress(70)
+      
+      // Set default browser if we found browsers
+      if (browsers.length > 0 && !whitelistedBrowser) {
+        const chrome = browsers.find(b => b.name.toLowerCase().includes('chrome'))
+        const safari = browsers.find(b => b.name.toLowerCase().includes('safari'))
+        setWhitelistedBrowser(chrome?.name || safari?.name || browsers[0].name)
       }
-      fetchApps()
+      
+      // Stage 3: Configure interventions (70-90%)
+      setLoadingMessage(`Configuring ${mode} mode interventions...`)
+      setLoadingProgress(85)
+      
+      // Small delay to show the message
+      await new Promise(resolve => setTimeout(resolve, 400))
+      
+      // Stage 4: Finalize (90-100%)
+      setLoadingMessage("Ready to configure whitelist...")
+      setLoadingProgress(100)
+      
+      // Brief pause to show completion
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Advance to step 3
+      setIsPreparingSession(false)
+      setStep(3)
+      
+    } catch (error) {
+      console.error('[PreSession] Failed to prepare session:', error)
+      setLoadingMessage("Configuration failed. Proceeding anyway...")
+      
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      setIsPreparingSession(false)
+      setStep(3)
     }
-  }, [isOpen, step, installedApps.length, isLoadingApps, whitelistedBrowser])
+  }
 
   useEffect(() => {
     if (isPreparationStarted && preparationTimeLeft > 0) {
@@ -129,6 +158,14 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
 
     if (sessionType === "parking-lot" && step === 2) {
       setStep(5) // Skip whitelist for parking lot sessions
+    } else if (step === 2 && sessionType !== "parking-lot") {
+      // Show loading screen IMMEDIATELY (synchronous)
+      setIsPreparingSession(true)
+      setLoadingProgress(0)
+      setLoadingMessage("Initializing session configuration...")
+      
+      // Then start the async work (will update progress as it goes)
+      prepareSessionConfiguration()
     } else {
       setStep(step + 1)
     }
@@ -211,24 +248,51 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-emerald-500/20">
           <div>
-            <h2 className="text-sm text-emerald-400 uppercase tracking-wider">PREPARE YOUR MIND</h2>
+            <h2 className={`text-sm uppercase tracking-wider ${
+              isPreparingSession
+                ? mode === 'Legend' 
+                  ? 'text-yellow-400' 
+                  : mode === 'Flow' 
+                    ? 'text-sky-400'
+                    : 'text-emerald-400'
+                : 'text-emerald-400'
+            }`}>
+              {isPreparingSession ? `CONFIGURING ${mode.toUpperCase()}` : 'PREPARE YOUR MIND'}
+            </h2>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Step {step} of {hasParkingLotItems ? 6 : 5}
+              {isPreparingSession 
+                ? 'Loading session parameters...'
+                : `Step ${step} of ${hasParkingLotItems ? 6 : 5}`
+              }
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-full bg-zinc-800/80 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 transition-colors text-sm"
-          >
-            ×
-          </button>
+          {!isPreparingSession && (
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-full bg-zinc-800/80 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 transition-colors text-sm"
+            >
+              ×
+            </button>
+          )}
         </div>
 
         {/* Progress Bar */}
         <div className="h-1 bg-zinc-900">
           <div
-            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
-            style={{ width: `${(step / (hasParkingLotItems ? 6 : 5)) * 100}%` }}
+            className={`h-full transition-all duration-500 ${
+              isPreparingSession
+                ? mode === 'Legend' 
+                  ? 'bg-gradient-to-r from-yellow-500 to-orange-500' 
+                  : mode === 'Flow' 
+                    ? 'bg-gradient-to-r from-sky-500 to-cyan-500'
+                    : 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                : 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+            }`}
+            style={{ 
+              width: isPreparingSession 
+                ? `${loadingProgress}%` 
+                : `${(step / (hasParkingLotItems ? 6 : 5)) * 100}%` 
+            }}
           />
         </div>
 
@@ -307,7 +371,132 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
             </div>
           )}
 
-          {step === 2 && sessionType !== "parking-lot" && (
+          {/* Loading Transition Screen - Shows between step 2 and 3 */}
+          {isPreparingSession && (
+            <div className="space-y-6 py-4">
+              <div className="flex flex-col items-center justify-center space-y-6">
+                {/* Animated loader with mode-colored rings */}
+                <div className="relative">
+                  <div className={`w-20 h-20 rounded-full border-2 ${
+                    mode === 'Legend' 
+                      ? 'border-yellow-500/20' 
+                      : mode === 'Flow' 
+                        ? 'border-sky-500/20'
+                        : 'border-emerald-500/20'
+                  }`} />
+                  <div className={`absolute inset-0 w-20 h-20 rounded-full border-2 border-transparent animate-spin ${
+                    mode === 'Legend' 
+                      ? 'border-t-yellow-500' 
+                      : mode === 'Flow' 
+                        ? 'border-t-sky-500'
+                        : 'border-t-emerald-500'
+                  }`} />
+                  <div className={`absolute inset-2 w-16 h-16 rounded-full border-2 border-transparent animate-spin ${
+                    mode === 'Legend' 
+                      ? 'border-b-orange-400/50' 
+                      : mode === 'Flow' 
+                        ? 'border-b-sky-400/50'
+                        : 'border-b-emerald-400/50'
+                  }`} style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                  
+                  {/* Center icon */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-2xl">
+                      {mode === 'Legend' ? '⚔️' : mode === 'Flow' ? '🌊' : '🧘'}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Loading header */}
+                <div className="text-center space-y-2">
+                  <h3 className={`text-base font-bold ${
+                    mode === 'Legend' 
+                      ? 'text-yellow-400' 
+                      : mode === 'Flow' 
+                        ? 'text-sky-400'
+                        : 'text-emerald-400'
+                  }`}>
+                    Preparing {mode} Mode
+                  </h3>
+                  <p className="text-xs text-zinc-400 animate-pulse">
+                    {loadingMessage}
+                  </p>
+                </div>
+                
+                {/* Progress bar */}
+                <div className="w-full max-w-[280px]">
+                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-300 ease-out rounded-full ${
+                        mode === 'Legend' 
+                          ? 'bg-gradient-to-r from-yellow-500 to-orange-500' 
+                          : mode === 'Flow' 
+                            ? 'bg-gradient-to-r from-sky-500 to-cyan-500'
+                            : 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                      }`}
+                      style={{ width: `${loadingProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 text-center mt-2">
+                    {loadingProgress}% complete
+                  </p>
+                </div>
+                
+                {/* What's being configured */}
+                <div className={`px-4 py-3 rounded-xl border text-center max-w-[300px] ${
+                  mode === 'Legend' 
+                    ? 'bg-yellow-500/10 border-yellow-500/30' 
+                    : mode === 'Flow' 
+                      ? 'bg-sky-500/10 border-sky-500/30'
+                      : 'bg-emerald-500/10 border-emerald-500/30'
+                }`}>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-center gap-2 text-zinc-300">
+                      <span className={loadingProgress >= 40 ? 'text-emerald-400' : 'text-zinc-500'}>
+                        {loadingProgress >= 40 ? '✓' : '○'}
+                      </span>
+                      <span>Scanning applications</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-zinc-300">
+                      <span className={loadingProgress >= 70 ? 'text-emerald-400' : 'text-zinc-500'}>
+                        {loadingProgress >= 70 ? '✓' : '○'}
+                      </span>
+                      <span>Detecting browsers</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-zinc-300">
+                      <span className={loadingProgress >= 85 ? 'text-emerald-400' : 'text-zinc-500'}>
+                        {loadingProgress >= 85 ? '✓' : '○'}
+                      </span>
+                      <span>Configuring interventions</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-zinc-300">
+                      <span className={loadingProgress >= 100 ? 'text-emerald-400' : 'text-zinc-500'}>
+                        {loadingProgress >= 100 ? '✓' : '○'}
+                      </span>
+                      <span>Preparing blockers</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Mode description */}
+                <p className={`text-[10px] text-center max-w-[280px] ${
+                  mode === 'Legend' 
+                    ? 'text-yellow-300/70' 
+                    : mode === 'Flow' 
+                      ? 'text-sky-300/70'
+                      : 'text-emerald-300/70'
+                }`}>
+                  {mode === 'Legend' 
+                    ? 'Full blocking enabled. No escape routes. Maximum focus.'
+                    : mode === 'Flow'
+                      ? 'Delay gates active. Gentle redirection when distracted.'
+                      : 'Soft nudges only. Freedom to explore with awareness.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && sessionType !== "parking-lot" && !isPreparingSession && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-white mb-1">Define Your Victory</h3>
@@ -398,8 +587,7 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
                       setShowAppDropdown(true)
                     }}
                     onFocus={() => setShowAppDropdown(true)}
-                    placeholder={isLoadingApps ? "Loading apps..." : "Search installed apps..."}
-                    disabled={isLoadingApps}
+                    placeholder="Search installed apps..."
                     className="w-full pl-8 pr-10 py-2.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-white placeholder:text-zinc-500 focus:border-emerald-500/60 focus:bg-emerald-500/10 focus:outline-none transition-all text-sm"
                   />
                   <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,46 +633,44 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
                   </div>
                 )}
 
-                {/* Close dropdown button */}
-                {showAppDropdown && (
-                  <button
-                    onClick={() => setShowAppDropdown(false)}
-                    className="text-xs text-zinc-500 hover:text-zinc-400 mb-3"
-                  >
-                    Close list
-                  </button>
-                )}
+                    {/* Close dropdown button */}
+                    {showAppDropdown && (
+                      <button
+                        onClick={() => setShowAppDropdown(false)}
+                        className="text-xs text-zinc-500 hover:text-zinc-400 mb-3"
+                      >
+                        Close list
+                      </button>
+                    )}
 
-                {/* Selected Apps as Emerald Chips */}
-                {whitelistedApps.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {whitelistedApps.map((appName) => {
-                      const app = installedApps.find(a => a.name === appName)
-                      return (
-                        <span
-                          key={appName}
-                          className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs rounded-full flex items-center gap-2 shadow-sm shadow-emerald-500/10"
-                        >
-                          <span className="w-4 h-4 bg-emerald-500/20 rounded flex items-center justify-center text-[10px]">
-                            {getCategoryIcon(app?.category || null)}
-                          </span>
-                          {appName}
-                          <button
-                            onClick={() => toggleWhitelistApp(appName)}
-                            className="hover:text-emerald-100 text-emerald-400/60 ml-1"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
+                    {/* Selected Apps as Emerald Chips */}
+                    {whitelistedApps.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {whitelistedApps.map((appName) => {
+                          const app = installedApps.find(a => a.name === appName)
+                          return (
+                            <span
+                              key={appName}
+                              className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs rounded-full flex items-center gap-2 shadow-sm shadow-emerald-500/10"
+                            >
+                              <span className="w-4 h-4 bg-emerald-500/20 rounded flex items-center justify-center text-[10px]">
+                                {getCategoryIcon(app?.category || null)}
+                              </span>
+                              {appName}
+                              <button
+                                onClick={() => toggleWhitelistApp(appName)}
+                                className="hover:text-emerald-100 text-emerald-400/60 ml-1"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
 
                 <p className="text-xs text-zinc-500">
-                  {installedApps.length > 0 
-                    ? `${installedApps.length} apps found on your system`
-                    : "Loading installed apps..."}
+                  {installedApps.length} apps found on your system
                 </p>
               </div>
             </div>
@@ -737,30 +923,32 @@ export function PreSessionPanel({ isOpen, onClose, onComplete }: PreSessionPanel
           )}
         </div>
 
-        {/* Footer - Updated button styles */}
-        <div className="px-5 py-4 border-t border-emerald-500/20 flex justify-between gap-3">
-          {step > 1 && (
+        {/* Footer - Hidden during loading transition */}
+        {!isPreparingSession && (
+          <div className="px-5 py-4 border-t border-emerald-500/20 flex justify-between gap-3">
+            {step > 1 && (
+              <button
+                onClick={handleBack}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-lg transition-colors text-sm"
+              >
+                Back
+              </button>
+            )}
             <button
-              onClick={handleBack}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-lg transition-colors text-sm"
+              onClick={step === 6 ? handleComplete : handleNext}
+              disabled={
+                (step === 2 && sessionType !== "parking-lot" && !intention.trim()) ||
+                (step === 5 && !systemChecksComplete) ||
+                (step === 2 && sessionType === "parking-lot" && selectedParkingLotItems.length === 0)
+              }
+              className={`px-6 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-zinc-300 uppercase tracking-wider rounded-2xl transition-all duration-200 border border-emerald-500/30 backdrop-blur-sm text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                step === 1 ? "ml-auto" : ""
+              }`}
             >
-              Back
+              {step === 6 ? "START NOW" : "NEXT"}
             </button>
-          )}
-          <button
-            onClick={step === 6 ? handleComplete : handleNext}
-            disabled={
-              (step === 2 && sessionType !== "parking-lot" && !intention.trim()) ||
-              (step === 5 && !systemChecksComplete) ||
-              (step === 2 && sessionType === "parking-lot" && selectedParkingLotItems.length === 0)
-            }
-            className={`px-6 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-zinc-300 uppercase tracking-wider rounded-2xl transition-all duration-200 border border-emerald-500/30 backdrop-blur-sm text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-              step === 1 ? "ml-auto" : ""
-            }`}
-          >
-            {step === 6 ? "START NOW" : "NEXT"}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
