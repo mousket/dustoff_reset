@@ -1,0 +1,705 @@
+
+
+# A2: Default Presets & Smart Whitelisting - Architecture & Design
+
+---
+
+## The Problem: What Should Be Blocked?
+
+When a user clicks "Quick Start," they don't configure anything. So how do we know what to block?
+
+**The naive approach:** Block nothing, let users get distracted.
+**The aggressive approach:** Block everything, users can't do anything.
+**The smart approach:** Block what's almost always distracting, allow what's almost always productive.
+
+### The 80/20 Rule
+
+For most knowledge workers:
+
+| Always Distracting | Always Productive | Depends |
+|--------------------|-------------------|---------|
+| Twitter | VS Code | YouTube |
+| Instagram | Terminal | Discord |
+| TikTok | Notion | Slack |
+| Netflix | GitHub | Reddit |
+| Games | Google Docs | News sites |
+
+**We can get 80% of the value by having sensible defaults for the obvious cases.** The "depends" cases get handled by the "Is this for work?" prompt.
+
+---
+
+## Default Presets: The Starting Points
+
+We ship 4 default presets that cover common use cases:
+
+### Preset 1: Quick Focus 🧘
+
+**Who it's for:** Someone who wants a quick Pomodoro-style session
+**Mode:** Zen (gentle, tracking only)
+**Duration:** 25 minutes
+**Philosophy:** Low commitment, easy to start
+
+```
+Quick Focus = "I want to focus for a bit, nothing intense"
+```
+
+### Preset 2: Deep Work 🌊
+
+**Who it's for:** Someone doing substantial focused work
+**Mode:** Flow (delay gates on distraction)
+**Duration:** 60 minutes
+**Philosophy:** Meaningful focus time with accountability
+
+```
+Deep Work = "I need to get something done, help me stay on track"
+```
+
+### Preset 3: Coding Sprint 🔥
+
+**Who it's for:** Developers in intense coding mode
+**Mode:** Legend (hard blocks, penalties)
+**Duration:** 90 minutes
+**Philosophy:** Maximum focus, no escape
+
+```
+Coding Sprint = "I'm shipping code, don't let me get distracted"
+```
+
+### Preset 4: Admin & Email 📧
+
+**Who it's for:** Someone doing administrative work
+**Mode:** Zen (gentle)
+**Duration:** 30 minutes
+**Philosophy:** Communication-heavy work, more tools allowed
+
+```
+Admin & Email = "I need to clear my inbox and handle tasks"
+```
+
+### Why These Four?
+
+| Preset | Covers | Gap if Missing |
+|--------|--------|----------------|
+| Quick Focus | Casual focus | No low-commitment option |
+| Deep Work | General productivity | No "standard" option |
+| Coding Sprint | Developer-specific | Devs are core audience! |
+| Admin & Email | Communication work | Can't do email without getting blocked |
+
+### Why Not More Presets?
+
+**Paradox of choice:** More options = harder to decide = more friction.
+
+4 presets is enough to cover major use cases without overwhelming. Users can create their own for specific needs.
+
+---
+
+## The Default Blocklist: What Gets Blocked
+
+### Blocked Domains
+
+```
+SOCIAL MEDIA
+├── twitter.com / x.com
+├── facebook.com
+├── instagram.com
+├── tiktok.com
+├── snapchat.com
+├── reddit.com
+├── tumblr.com
+├── pinterest.com
+└── threads.net
+
+ENTERTAINMENT
+├── netflix.com
+├── hulu.com
+├── disneyplus.com
+├── hbomax.com
+├── primevideo.com
+├── twitch.tv
+└── crunchyroll.com
+
+GAMING
+├── steampowered.com
+├── store.steampowered.com
+├── epicgames.com
+├── gog.com
+├── itch.io
+└── roblox.com
+
+SHOPPING
+├── amazon.com
+├── ebay.com
+└── etsy.com
+```
+
+### Why These Specific Sites?
+
+**Social Media:** These are the biggest time sinks. Research shows the average person spends 2+ hours/day on social media.
+
+**Entertainment:** Streaming services are designed for binge-watching. One episode leads to another.
+
+**Gaming:** Game stores lead to browsing, browsing leads to playing, playing leads to hours lost.
+
+**Shopping:** "Just checking prices" turns into 30 minutes of browsing.
+
+### What's NOT Blocked by Default
+
+**YouTube:** Controversial choice. YouTube has educational content, but also endless entertainment. We put it in the "ask user" category.
+
+**LinkedIn:** It's social media, but it's also professional networking. Many people need it for work.
+
+**News sites:** Not blocked by default. Some people need to stay informed for work.
+
+---
+
+## The Default Whitelist: What's Always Allowed
+
+### Whitelisted Domains
+
+```
+DEVELOPMENT
+├── github.com
+├── gitlab.com
+├── bitbucket.org
+├── stackoverflow.com
+├── stackexchange.com
+├── developer.mozilla.org
+├── docs.rs
+├── crates.io
+├── npmjs.com
+└── pypi.org
+
+PRODUCTIVITY
+├── notion.so
+├── linear.app
+├── asana.com
+├── trello.com
+├── monday.com
+├── clickup.com
+└── figma.com
+
+GOOGLE WORKSPACE
+├── docs.google.com
+├── sheets.google.com
+├── slides.google.com
+├── drive.google.com
+├── calendar.google.com
+└── mail.google.com
+
+MICROSOFT
+├── outlook.office.com
+├── office.com
+├── sharepoint.com
+└── teams.microsoft.com
+
+COMMUNICATION (WORK)
+├── slack.com
+└── zoom.us
+
+AI TOOLS
+├── chat.openai.com
+├── claude.ai
+└── anthropic.com
+
+MUSIC (BACKGROUND)
+├── spotify.com
+├── music.apple.com
+└── soundcloud.com
+```
+
+### Why Music is Whitelisted
+
+**Research shows:** Background music can improve focus for many people. Blocking Spotify would frustrate users who listen while working.
+
+**The risk:** Someone might get distracted browsing for new music. But this is low-risk compared to social media.
+
+---
+
+## App Categorization: The Algorithm
+
+When we see an app, we need to decide: productive or distracting?
+
+### The Decision Tree
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Is this app productive?                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+   Name/Bundle ID        Name/Bundle ID        No match
+   matches PRODUCTIVITY  matches DISTRACTION   found
+        │                     │                     │
+        ▼                     ▼                     ▼
+   ✅ Whitelist          ❌ Block             ⚠️ Unknown
+   by default            by default           (ask user)
+```
+
+### Pattern Matching Rules
+
+**Productivity Patterns:**
+```rust
+// Code Editors
+name.contains("code") || name.contains("cursor") || name.contains("sublime")
+name.contains("xcode") || name.contains("intellij") || name.contains("pycharm")
+
+// Terminals
+name.contains("terminal") || name.contains("iterm") || name.contains("warp")
+
+// Office
+name.contains("word") || name.contains("excel") || name.contains("notion")
+name.contains("figma") || name.contains("sketch")
+
+// Communication (work)
+name.contains("slack") || name.contains("teams") || name.contains("zoom")
+```
+
+**Distraction Patterns:**
+```rust
+// Social
+name.contains("twitter") || name.contains("facebook") || name.contains("instagram")
+
+// Games
+name.contains("steam") || name.contains("epic games") || bundle.contains("game")
+
+// Entertainment
+name.contains("netflix") || name.contains("spotify")
+```
+
+### Why Pattern Matching?
+
+**Alternative 1:** Maintain a giant list of all known apps.
+- Problem: Always out of date, can't cover everything
+
+**Alternative 2:** Use an API to look up apps.
+- Problem: Requires internet, slow, privacy concerns
+
+**Our approach:** Simple pattern matching catches 90% of cases. Unknown apps get asked about.
+
+---
+
+# A2: Default Presets & Smart Whitelisting (Continued)
+
+---
+
+## The "Is This For Work?" System (Continued)
+
+When a user accesses an unknown app/domain, we prompt them:
+
+### The Prompt Design
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│   📱 We noticed you opened "Discord"                            │
+│                                                                 │
+│   Is this related to your work?                                 │
+│                                                                 │
+│   ┌─────────────────┐         ┌─────────────────┐              │
+│   │                 │         │                 │              │
+│   │  ✅ Yes, it's   │         │  ❌ No, it's a  │              │
+│   │     for work    │         │     distraction │              │
+│   │                 │         │                 │              │
+│   └─────────────────┘         └─────────────────┘              │
+│                                                                 │
+│   ℹ️ We won't penalize you this time.                           │
+│      Your choice will apply to future Quick Start sessions.     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Design?
+
+| Element | Purpose |
+|---------|---------|
+| **Shows app name** | User knows exactly what triggered the prompt |
+| **Binary choice** | No ambiguity, fast decision |
+| **No penalty this time** | Reduces anxiety, encourages honesty |
+| **Future sessions** | User knows this is a one-time choice |
+
+### What Happens After the Choice
+
+**User clicks "Yes, it's for work":**
+```sql
+UPDATE cached_apps 
+SET user_classification = 'whitelisted' 
+WHERE app_name = 'Discord';
+```
+
+**User clicks "No, it's a distraction":**
+```sql
+UPDATE cached_apps 
+SET user_classification = 'blocked' 
+WHERE app_name = 'Discord';
+```
+
+### The Learning Effect
+
+Over time, Quick Start becomes personalized:
+
+| Session | Unknown Apps | User Experience |
+|---------|--------------|-----------------|
+| Session 1 | 5 prompts | "Hmm, some questions" |
+| Session 2 | 2 prompts | "Fewer this time" |
+| Session 5 | 0 prompts | "Just works!" |
+
+**This is the magic of Quick Start:** It starts smart and gets smarter.
+
+---
+
+## How Categories Determine Behavior
+
+Each category has default behaviors:
+
+| Category | Default Status | Rationale |
+|----------|----------------|-----------|
+| `Productivity` | ✅ Whitelisted | These are work tools |
+| `Communication` | ✅ Whitelisted | Needed for collaboration |
+| `Browser` | ⚠️ Neutral | Depends on sites visited |
+| `Utility` | ✅ Whitelisted | System tools, harmless |
+| `Social` | ❌ Blocked | Primary distraction source |
+| `Game` | ❌ Blocked | Major time sink |
+| `Entertainment` | ❌ Blocked | Designed for binge consumption |
+| `Unknown` | ⚠️ Ask User | We don't know, let user decide |
+
+### Browser: The Special Case
+
+Browsers are tricky because they can access both productive and distracting content.
+
+**Our approach:**
+1. Browser app itself is always allowed (you need to open it)
+2. Individual domains are checked against whitelist/blocklist
+3. Unknown domains trigger the "Is this for work?" prompt
+
+```
+User opens Chrome → ✅ Allowed (browser is whitelisted)
+User visits github.com → ✅ Allowed (domain whitelisted)
+User visits twitter.com → ❌ Blocked (domain blocked)
+User visits randomsite.com → ⚠️ Prompt (unknown domain)
+```
+
+---
+
+## Data Flow: Quick Start in Action
+
+Let's trace what happens when a user clicks Quick Start:
+
+### Step 1: User Selects Mode + Duration
+
+```
+User Input:
+- Mode: Flow
+- Duration: 45 minutes
+```
+
+### Step 2: Frontend Calls Backend
+
+```typescript
+const config = await invoke('get_quick_start_config', {
+  mode: 'Flow',
+  durationMinutes: 45
+});
+```
+
+### Step 3: Backend Builds Configuration
+
+```rust
+pub fn get_quick_start_config(mode: String, duration_minutes: i32) -> QuickStartConfig {
+    // 1. Get whitelisted apps from cache
+    let whitelisted_apps = get_default_whitelisted_apps(&conn)?;
+    // Returns: ["VS Code", "Terminal", "Slack", "Notion", ...]
+    
+    // 2. Get whitelisted domains
+    let whitelisted_domains = get_default_whitelisted_domains();
+    // Returns: ["github.com", "notion.so", "slack.com", ...]
+    
+    // 3. Get blocked apps from cache
+    let blocked_apps = get_default_blocked_apps(&conn)?;
+    // Returns: ["Steam", "Epic Games", ...]
+    
+    // 4. Get blocked domains from database
+    let blocked_domains = get_all_blocked_domains(&conn)?;
+    // Returns: ["twitter.com", "instagram.com", "netflix.com", ...]
+    
+    // 5. Return complete configuration
+    QuickStartConfig {
+        mode: SessionMode::Flow,
+        duration_minutes: 45,
+        whitelisted_apps,
+        whitelisted_domains,
+        blocked_apps,
+        blocked_domains,
+    }
+}
+```
+
+### Step 4: Session Starts with Configuration
+
+The session now has everything it needs:
+- What mode to run in
+- How long to run
+- What apps are allowed
+- What domains are allowed
+- What apps are blocked
+- What domains are blocked
+
+### Step 5: During Session
+
+```
+User switches to VS Code → Check whitelist → ✅ Allowed
+User switches to Twitter → Check blocklist → ❌ Blocked → Intervention
+User switches to Discord → Check both → Not found → ⚠️ Prompt
+```
+
+---
+
+## Preset Storage: How Presets Are Saved
+
+### Creating a User Preset
+
+When user saves a preset after "Create New":
+
+```typescript
+// Frontend
+const preset = await invoke('create_user_preset', {
+  input: {
+    name: 'My React Project',
+    icon: '⚛️',
+    mode: 'Legend',
+    durationMinutes: 90,
+    whitelistedApps: ['VS Code', 'Terminal', 'Chrome'],
+    whitelistedDomains: ['github.com', 'react.dev', 'stackoverflow.com'],
+    useDefaultBlocklist: true,
+    includeMentalPrep: false
+  }
+});
+```
+
+```rust
+// Backend
+pub fn create_user_preset(input: CreatePresetInput) -> Result<SessionPreset, String> {
+    // 1. Check limit (max 5 user presets)
+    let count = count_user_presets(&conn)?;
+    if count >= 5 {
+        return Err("Maximum of 5 presets. Delete one first.".to_string());
+    }
+    
+    // 2. Generate ID
+    let id = uuid::Uuid::new_v4().to_string();
+    
+    // 3. Serialize arrays to JSON
+    let apps_json = serde_json::to_string(&input.whitelisted_apps)?;
+    let domains_json = serde_json::to_string(&input.whitelisted_domains)?;
+    
+    // 4. Insert into database
+    conn.execute(
+        "INSERT INTO presets (...) VALUES (...)",
+        params![id, input.name, input.icon, ...]
+    )?;
+    
+    // 5. Return the created preset
+    get_preset_by_id(&conn, &id)
+}
+```
+
+### Loading a Preset
+
+When user clicks on a preset to start:
+
+```typescript
+// Frontend
+const preset = await invoke('use_preset', { id: 'preset-uuid-123' });
+// This records usage AND returns the preset data
+```
+
+```rust
+// Backend
+pub fn use_preset(id: String) -> Result<SessionPreset, String> {
+    // 1. Record usage (for sorting by "most recent")
+    conn.execute(
+        "UPDATE presets SET usage_count = usage_count + 1, last_used_at = ?1 WHERE id = ?2",
+        params![now_ms(), id]
+    )?;
+    
+    // 2. Return the preset
+    get_preset_by_id(&conn, &id)
+}
+```
+
+### "Last Session" Special Handling
+
+After every session completes:
+
+```typescript
+// Frontend (in post-session flow)
+await invoke('save_as_last_session', {
+  mode: session.mode,
+  durationMinutes: session.duration,
+  whitelistedApps: session.whitelistedApps,
+  whitelistedDomains: session.whitelistedDomains,
+  useDefaultBlocklist: session.useDefaultBlocklist,
+  includeMentalPrep: session.includeMentalPrep
+});
+```
+
+```rust
+// Backend
+pub fn save_as_last_session(...) -> Result<(), String> {
+    // Use INSERT OR REPLACE to always overwrite
+    conn.execute(
+        "INSERT OR REPLACE INTO presets (
+            id, name, icon, mode, ...
+            is_last_session
+        ) VALUES (
+            'last_session', 'Last Session', '🔄', ...
+            TRUE
+        )",
+        params![...]
+    )?;
+    Ok(())
+}
+```
+
+**Key insight:** `id = 'last_session'` is hardcoded. There's only ever one "Last Session" preset, and it gets overwritten after each session.
+
+---
+
+## The Preset Limit: Why 5?
+
+### The Decision
+
+Users can create a maximum of 5 custom presets.
+
+### Why Not Unlimited?
+
+| Concern | Why It Matters |
+|---------|----------------|
+| **Decision fatigue** | Too many presets = hard to choose |
+| **UI clutter** | List becomes overwhelming |
+| **Quality over quantity** | Forces users to curate |
+| **Database size** | Minor concern, but exists |
+
+### Why Not Fewer (3)?
+
+| Concern | Why It Matters |
+|---------|----------------|
+| **Use cases vary** | Work, personal projects, client work, learning |
+| **User frustration** | "I need just one more!" |
+| **Power users** | Want flexibility |
+
+### Why 5 Specifically?
+
+**Research on memory:** Humans can easily remember and choose from 5-7 options. Beyond that, decision-making slows down.
+
+**Practical testing:** We found 5 covers most use cases:
+1. Default work preset
+2. Intense focus preset
+3. Administrative work
+4. Personal projects
+5. Spare/experimental
+
+### What Counts Toward the Limit?
+
+| Type | Counts? | Why |
+|------|---------|-----|
+| User presets | ✅ Yes | User created, user manages |
+| Default presets | ❌ No | We control these |
+| Last Session | ❌ No | Automatic, not user-managed |
+
+---
+
+## App Scanning: When and How
+
+### When Do We Scan?
+
+| Trigger | Action |
+|---------|--------|
+| **First app launch** | Full scan, cache all apps |
+| **App restart** | Quick check for new apps |
+| **24+ hours since last scan** | Background refresh |
+| **User requests** | Manual "Refresh" button (future) |
+
+### What Does a Scan Do?
+
+**macOS:**
+```rust
+// Pseudocode
+fn scan_macos_apps() -> Vec<AppInfo> {
+    // 1. List all running apps
+    let running = NSWorkspace::shared().runningApplications();
+    
+    // 2. For each app, extract:
+    //    - App name
+    //    - Bundle ID (com.apple.Safari)
+    //    - Category (we determine this)
+    
+    // 3. Return list
+}
+```
+
+**Windows:**
+```rust
+// Pseudocode
+fn scan_windows_apps() -> Vec<AppInfo> {
+    // 1. Enumerate windows
+    // 2. Get process info for each window
+    // 3. Extract app name, exe path
+    // 4. Return list
+}
+```
+
+### Why Cache the Results?
+
+**Without caching:**
+```
+Session Start → Scan apps (3-5 seconds) → Show loading → Start session
+```
+
+**With caching:**
+```
+Session Start → Load from database (50ms) → Start session immediately
+```
+
+**User experience difference:** 3-5 seconds feels slow. 50ms feels instant.
+
+---
+
+## Summary: A2 Key Takeaways
+
+1. **Default presets provide starting points** - 4 presets cover major use cases
+2. **Smart blocklist is conservative** - Block obvious distractions, whitelist obvious productivity tools
+3. **Unknown items prompt the user** - System learns over time
+4. **Quick Start uses all of this** - Combines presets + blocklist + whitelist + learned preferences
+5. **5 preset limit is intentional** - Prevents decision fatigue
+6. **App scanning is cached** - Performance matters for UX
+
+---
+
+## Connection to Phase 9 Overall
+
+Now you understand:
+
+| Document | What You Learned |
+|----------|------------------|
+| **A1** | Why we need presets, how data is structured, the Rust types |
+| **A2** | What defaults we ship, how smart whitelisting works, the learning system |
+
+**Next (A3):** How the UI presents all of this to users - the Entry Point screen, Quick Start flow, and component design.
+
+---
+
+## Questions to Consider
+
+Before moving to A3, think about:
+
+1. **Are there apps/domains we should add to defaults?** Think about your own workflow.
+
+2. **Is 5 presets the right limit?** Would you personally need more?
+
+3. **Should YouTube be blocked by default?** It's currently in the "ask user" category.
+
+4. **What about LinkedIn?** It's social media but also professional.
+
+These decisions shape the user experience. There's no perfect answer - it's about tradeoffs.
+

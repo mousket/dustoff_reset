@@ -1,0 +1,906 @@
+# Phase 9: Presets & Quick Start
+## Output B6: Integration - Implementation Prompts
+
+---
+
+## Overview
+
+This document contains step-by-step prompts for Cursor to integrate all Phase 9 components into the main app flow.
+
+**Depends on:** All previous B documents (B1-B5) must be complete.
+
+**Total Steps:** 8
+**Estimated Time:** 2-3 hours
+
+**Important:** This document provides integration patterns. You'll need to adapt them to your existing App.tsx structure and naming conventions.
+
+---
+
+## Step 1: Create Panel Types
+
+**Prompt for Cursor:**
+
+```
+Create or update the panel types to include all Phase 9 panels.
+
+Create/Update file: src/types/panels.ts
+
+// All possible panel states in the app
+export type PanelType =
+  // HUD States
+  | 'hud'
+  | 'hudMinimized'
+  
+  // Entry Flow (Phase 9)
+  | 'entryPoint'
+  | 'quickStart'
+  | 'presetPicker'
+  
+  // Wizard Flow
+  | 'sessionType'
+  | 'modeSelect'
+  | 'duration'
+  | 'apps'
+  | 'domains'
+  | 'mentalPrep1'
+  | 'mentalPrep2'
+  | 'savePrompt'
+  
+  // Active Session
+  | 'activeSession'
+  | 'sessionComplete'
+  
+  // Interventions
+  | 'delayGate'
+  | 'blockScreen';
+
+// Back navigation mapping
+export const BACK_NAVIGATION: Partial<Record<PanelType, PanelType>> = {
+  entryPoint: 'hud',
+  quickStart: 'entryPoint',
+  presetPicker: 'entryPoint',
+  modeSelect: 'entryPoint',
+  sessionType: 'entryPoint',
+  duration: 'modeSelect',
+  apps: 'duration',
+  domains: 'apps',
+  mentalPrep1: 'domains',
+  mentalPrep2: 'mentalPrep1',
+  // savePrompt is special - depends on whether user skipped
+};
+
+// Panels that should show the HUD underneath
+export const OVERLAY_PANELS: PanelType[] = [
+  'entryPoint',
+  'quickStart',
+  'presetPicker',
+  'delayGate',
+  'blockScreen',
+];
+```
+
+---
+
+## Step 2: Create Session Config Types
+
+**Prompt for Cursor:**
+
+```
+Create types for session configuration.
+
+Create file: src/types/session.ts
+
+import { SessionMode } from '@/lib/presets/types';
+
+// Full session configuration
+export interface SessionConfig {
+  // Core settings
+  mode: SessionMode;
+  durationMinutes: number;
+  
+  // Whitelisting
+  whitelistedApps: string[];
+  whitelistedDomains: string[];
+  blockedApps: string[];
+  blockedDomains: string[];
+  
+  // Behavior
+  useDefaultBlocklist: boolean;
+  includeMentalPrep: boolean;
+  
+  // Tracking
+  startedFrom: 'quickStart' | 'preset' | 'createNew';
+  presetId?: string;
+}
+
+// Wizard state for Create New flow
+export interface WizardState {
+  // Configuration being built
+  mode: SessionMode | null;
+  durationMinutes: number;
+  whitelistedApps: string[];
+  whitelistedDomains: string[];
+  useDefaultBlocklist: boolean;
+  
+  // Mental prep tracking
+  skippedMentalPrep: boolean;
+  intention?: string;
+}
+
+// Initial wizard state
+export const INITIAL_WIZARD_STATE: WizardState = {
+  mode: null,
+  durationMinutes: 30,
+  whitelistedApps: [],
+  whitelistedDomains: [],
+  useDefaultBlocklist: true,
+  skippedMentalPrep: false,
+};
+```
+
+---
+
+## Step 3: Create useNavigation Hook
+
+**Prompt for Cursor:**
+
+```
+Create a hook to manage panel navigation.
+
+Create file: src/hooks/useNavigation.ts
+
+import { useState, useCallback } from 'react';
+import { PanelType, BACK_NAVIGATION } from '@/types/panels';
+
+interface UseNavigationReturn {
+  currentPanel: PanelType;
+  previousPanel: PanelType | null;
+  navigate: (panel: PanelType) => void;
+  goBack: (customBack?: PanelType) => void;
+  canGoBack: boolean;
+}
+
+export function useNavigation(initialPanel: PanelType = 'hud'): UseNavigationReturn {
+  const [currentPanel, setCurrentPanel] = useState<PanelType>(initialPanel);
+  const [previousPanel, setPreviousPanel] = useState<PanelType | null>(null);
+
+  const navigate = useCallback((panel: PanelType) => {
+    setPreviousPanel(currentPanel);
+    setCurrentPanel(panel);
+    console.log(`[Navigation] ${currentPanel} → ${panel}`);
+  }, [currentPanel]);
+
+  const goBack = useCallback((customBack?: PanelType) => {
+    const backTo = customBack || BACK_NAVIGATION[currentPanel] || 'hud';
+    setPreviousPanel(currentPanel);
+    setCurrentPanel(backTo);
+    console.log(`[Navigation] Back: ${currentPanel} → ${backTo}`);
+  }, [currentPanel]);
+
+  const canGoBack = currentPanel !== 'hud' && currentPanel !== 'activeSession';
+
+  return {
+    currentPanel,
+    previousPanel,
+    navigate,
+    goBack,
+    canGoBack,
+  };
+}
+```
+
+---
+
+## Step 4: Create useSessionStart Hook
+
+**Prompt for Cursor:**
+
+```
+Create a hook to manage session start logic from all entry points.
+
+Create file: src/hooks/useSessionStart.ts
+
+import { useCallback } from 'react';
+import { tauriBridge } from '@/lib/tauri-bridge';
+import { SessionPreset, QuickStartConfig } from '@/lib/presets/types';
+import { SessionConfig, WizardState } from '@/types/session';
+
+interface UseSessionStartReturn {
+  startFromQuickStart: (config: QuickStartConfig) => Promise<SessionConfig>;
+  startFromPreset: (preset: SessionPreset) => Promise<SessionConfig>;
+  startFromWizard: (
+    wizard: WizardState,
+    savePreset: boolean,
+    presetName?: string,
+    presetIcon?: string
+  ) => Promise<SessionConfig>;
+}
+
+export function useSessionStart(): UseSessionStartReturn {
+  
+  // Start session from Quick Start
+  const startFromQuickStart = useCallback(async (config: QuickStartConfig): Promise<SessionConfig> => {
+    console.log('[useSessionStart] Starting from Quick Start');
+    
+    // Quick Start already saved Last Session in the QuickStartPanel
+    // Just build and return the full config
+    
+    const fullConfig: SessionConfig = {
+      mode: config.mode,
+      durationMinutes: config.durationMinutes,
+      whitelistedApps: config.whitelistedApps,
+      whitelistedDomains: config.whitelistedDomains,
+      blockedApps: config.blockedApps,
+      blockedDomains: config.blockedDomains,
+      useDefaultBlocklist: true,
+      includeMentalPrep: false,
+      startedFrom: 'quickStart',
+    };
+    
+    return fullConfig;
+  }, []);
+
+  // Start session from Preset
+  const startFromPreset = useCallback(async (preset: SessionPreset): Promise<SessionConfig> => {
+    console.log('[useSessionStart] Starting from Preset:', preset.name);
+    
+    // Get blocked lists if using default blocklist
+    let blockedApps: string[] = [];
+    let blockedDomains: string[] = [];
+    
+    if (preset.useDefaultBlocklist) {
+      // Fetch default blocked lists
+      blockedDomains = await tauriBridge.getBlockedDomains();
+      // blockedApps would come from cached_apps, but we'll handle that in session monitoring
+    }
+    
+    const fullConfig: SessionConfig = {
+      mode: preset.mode,
+      durationMinutes: preset.durationMinutes,
+      whitelistedApps: preset.whitelistedApps,
+      whitelistedDomains: preset.whitelistedDomains,
+      blockedApps,
+      blockedDomains,
+      useDefaultBlocklist: preset.useDefaultBlocklist,
+      includeMentalPrep: preset.includeMentalPrep,
+      startedFrom: 'preset',
+      presetId: preset.id,
+    };
+    
+    // Save as Last Session
+    await tauriBridge.saveAsLastSession(
+      preset.mode,
+      preset.durationMinutes,
+      preset.whitelistedApps,
+      preset.whitelistedDomains,
+      preset.useDefaultBlocklist,
+      preset.includeMentalPrep
+    );
+    
+    return fullConfig;
+  }, []);
+
+  // Start session from Create New wizard
+  const startFromWizard = useCallback(async (
+    wizard: WizardState,
+    savePreset: boolean,
+    presetName?: string,
+    presetIcon?: string
+  ): Promise<SessionConfig> => {
+    console.log('[useSessionStart] Starting from Wizard, save preset:', savePreset);
+    
+    if (!wizard.mode) {
+      throw new Error('Mode is required');
+    }
+    
+    // Get blocked lists
+    let blockedDomains: string[] = [];
+    if (wizard.useDefaultBlocklist) {
+      blockedDomains = await tauriBridge.getBlockedDomains();
+    }
+    
+    const includeMentalPrep = !wizard.skippedMentalPrep;
+    
+    // Save as preset if requested
+    if (savePreset && presetName && presetIcon) {
+      await tauriBridge.createUserPreset({
+        name: presetName,
+        icon: presetIcon,
+        mode: wizard.mode,
+        durationMinutes: wizard.durationMinutes,
+        whitelistedApps: wizard.whitelistedApps,
+        whitelistedDomains: wizard.whitelistedDomains,
+        useDefaultBlocklist: wizard.useDefaultBlocklist,
+        includeMentalPrep,
+      });
+      console.log('[useSessionStart] Saved preset:', presetName);
+    }
+    
+    // Save as Last Session
+    await tauriBridge.saveAsLastSession(
+      wizard.mode,
+      wizard.durationMinutes,
+      wizard.whitelistedApps,
+      wizard.whitelistedDomains,
+      wizard.useDefaultBlocklist,
+      includeMentalPrep
+    );
+    
+    const fullConfig: SessionConfig = {
+      mode: wizard.mode,
+      durationMinutes: wizard.durationMinutes,
+      whitelistedApps: wizard.whitelistedApps,
+      whitelistedDomains: wizard.whitelistedDomains,
+      blockedApps: [],
+      blockedDomains,
+      useDefaultBlocklist: wizard.useDefaultBlocklist,
+      includeMentalPrep,
+      startedFrom: 'createNew',
+    };
+    
+    return fullConfig;
+  }, []);
+
+  return {
+    startFromQuickStart,
+    startFromPreset,
+    startFromWizard,
+  };
+}
+```
+
+---
+
+## Step 5: Create App Integration Component
+
+**Prompt for Cursor:**
+
+```
+Create a component that integrates all Phase 9 panels. 
+This is a template - adapt it to your existing App.tsx structure.
+
+Create file: src/components/AppPhase9Integration.tsx
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { tauriBridge } from '@/lib/tauri-bridge';
+import { SessionPreset, QuickStartConfig } from '@/lib/presets/types';
+import { PanelType } from '@/types/panels';
+import { SessionConfig, WizardState, INITIAL_WIZARD_STATE } from '@/types/session';
+import { useNavigation } from '@/hooks/useNavigation';
+import { useSessionStart } from '@/hooks/useSessionStart';
+import { usePresets } from '@/hooks/usePresets';
+import { useSavePreset } from '@/hooks/useSavePreset';
+
+// Import Phase 9 components
+import {
+  EntryPointPanel,
+  QuickStartPanel,
+  PresetPickerPanel,
+  SavePresetPrompt,
+  SkipPrepButton,
+} from '@/components/presets';
+
+// You'll need to import your existing components:
+// import { HUD } from '@/components/HUD';
+// import { ModeSelectPanel } from '@/components/session/ModeSelectPanel';
+// import { DurationPanel } from '@/components/session/DurationPanel';
+// import { MentalPrepPanel } from '@/components/session/MentalPrepPanel';
+// import { ActiveSessionPanel } from '@/components/session/ActiveSessionPanel';
+
+export const AppPhase9Integration: React.FC = () => {
+  // Navigation
+  const { currentPanel, navigate, goBack } = useNavigation('hud');
+  
+  // Session start logic
+  const { startFromQuickStart, startFromPreset, startFromWizard } = useSessionStart();
+  
+  // Save preset logic
+  const { canSave, presetCount, checkCanSave, isSaving } = useSavePreset();
+  
+  // Wizard state
+  const [wizardState, setWizardState] = useState<WizardState>(INITIAL_WIZARD_STATE);
+  
+  // Active session
+  const [sessionConfig, setSessionConfig] = useState<SessionConfig | null>(null);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+
+  // Initialize presets on mount
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await tauriBridge.initPresets();
+        console.log('[App] Presets initialized');
+      } catch (error) {
+        console.error('[App] Failed to initialize presets:', error);
+      }
+    };
+    init();
+  }, []);
+
+  // Reset wizard state
+  const resetWizard = useCallback(() => {
+    setWizardState(INITIAL_WIZARD_STATE);
+  }, []);
+
+  // Update wizard state
+  const updateWizard = useCallback((updates: Partial<WizardState>) => {
+    setWizardState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  // Handle Play button click
+  const handlePlayClick = useCallback(() => {
+    if (isSessionActive) {
+      navigate('activeSession');
+    } else {
+      navigate('entryPoint');
+    }
+  }, [isSessionActive, navigate]);
+
+  // Handle Quick Start session
+  const handleQuickStartSession = useCallback(async (config: QuickStartConfig) => {
+    try {
+      const fullConfig = await startFromQuickStart(config);
+      setSessionConfig(fullConfig);
+      setIsSessionActive(true);
+      navigate('activeSession');
+    } catch (error) {
+      console.error('[App] Quick Start failed:', error);
+    }
+  }, [startFromQuickStart, navigate]);
+
+  // Handle Preset session
+  const handlePresetSession = useCallback(async (preset: SessionPreset) => {
+    try {
+      const fullConfig = await startFromPreset(preset);
+      setSessionConfig(fullConfig);
+      
+      // Check if preset includes mental prep
+      if (preset.includeMentalPrep) {
+        // Show mental prep first
+        updateWizard({
+          mode: preset.mode,
+          durationMinutes: preset.durationMinutes,
+          whitelistedApps: preset.whitelistedApps,
+          whitelistedDomains: preset.whitelistedDomains,
+          useDefaultBlocklist: preset.useDefaultBlocklist,
+          skippedMentalPrep: false,
+        });
+        navigate('mentalPrep1');
+      } else {
+        setIsSessionActive(true);
+        navigate('activeSession');
+      }
+    } catch (error) {
+      console.error('[App] Preset session failed:', error);
+    }
+  }, [startFromPreset, navigate, updateWizard]);
+
+  // Handle Create New selection
+  const handleCreateNew = useCallback(() => {
+    resetWizard();
+    navigate('modeSelect'); // Or 'sessionType' if that's your first step
+  }, [resetWizard, navigate]);
+
+  // Handle Skip Mental Prep
+  const handleSkipMentalPrep = useCallback(async () => {
+    updateWizard({ skippedMentalPrep: true });
+    await checkCanSave();
+    navigate('savePrompt');
+  }, [updateWizard, checkCanSave, navigate]);
+
+  // Handle Continue Mental Prep
+  const handleContinueMentalPrep = useCallback(async () => {
+    if (currentPanel === 'mentalPrep1') {
+      navigate('mentalPrep2');
+    } else if (currentPanel === 'mentalPrep2') {
+      await checkCanSave();
+      navigate('savePrompt');
+    }
+  }, [currentPanel, navigate, checkCanSave]);
+
+  // Handle Save and Start from wizard
+  const handleSaveAndStart = useCallback(async (
+    name: string,
+    icon: string,
+    includeMentalPrep: boolean
+  ) => {
+    try {
+      const fullConfig = await startFromWizard(
+        { ...wizardState, skippedMentalPrep: !includeMentalPrep },
+        true,
+        name,
+        icon
+      );
+      setSessionConfig(fullConfig);
+      setIsSessionActive(true);
+      navigate('activeSession');
+    } catch (error) {
+      console.error('[App] Save and start failed:', error);
+      throw error;
+    }
+  }, [wizardState, startFromWizard, navigate]);
+
+  // Handle Just Start from wizard
+  const handleJustStart = useCallback(async () => {
+    try {
+      const fullConfig = await startFromWizard(wizardState, false);
+      setSessionConfig(fullConfig);
+      setIsSessionActive(true);
+      navigate('activeSession');
+    } catch (error) {
+      console.error('[App] Just start failed:', error);
+    }
+  }, [wizardState, startFromWizard, navigate]);
+
+  // Handle Back from Save Prompt
+  const handleBackFromSavePrompt = useCallback(() => {
+    if (wizardState.skippedMentalPrep) {
+      navigate('mentalPrep1');
+    } else {
+      navigate('mentalPrep2');
+    }
+  }, [wizardState.skippedMentalPrep, navigate]);
+
+  // Global keyboard handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // Escape to go back (except during active session)
+      if (e.key === 'Escape' && !isSessionActive) {
+        goBack();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSessionActive, goBack]);
+
+  // Build config from wizard state for SavePresetPrompt
+  const buildWizardConfig = () => ({
+    mode: wizardState.mode!,
+    durationMinutes: wizardState.durationMinutes,
+    whitelistedApps: wizardState.whitelistedApps,
+    whitelistedDomains: wizardState.whitelistedDomains,
+    useDefaultBlocklist: wizardState.useDefaultBlocklist,
+  });
+
+  return (
+    <div className="app-container">
+      {/* Entry Point Panel */}
+      {currentPanel === 'entryPoint' && (
+        <EntryPointPanel
+          onSelectQuickStart={() => navigate('quickStart')}
+          onSelectPreset={() => navigate('presetPicker')}
+          onSelectCreateNew={handleCreateNew}
+          onClose={() => navigate('hud')}
+        />
+      )}
+
+      {/* Quick Start Panel */}
+      {currentPanel === 'quickStart' && (
+        <QuickStartPanel
+          onBack={() => goBack()}
+          onSessionStart={handleQuickStartSession}
+        />
+      )}
+
+      {/* Preset Picker Panel */}
+      {currentPanel === 'presetPicker' && (
+        <PresetPickerPanel
+          onBack={() => goBack()}
+          onSelectPreset={handlePresetSession}
+        />
+      )}
+
+      {/* Save Preset Prompt */}
+      {currentPanel === 'savePrompt' && wizardState.mode && (
+        <SavePresetPrompt
+          config={buildWizardConfig()}
+          skippedMentalPrep={wizardState.skippedMentalPrep}
+          onSaveAndStart={handleSaveAndStart}
+          onJustStart={handleJustStart}
+          onBack={handleBackFromSavePrompt}
+          canSave={canSave}
+          presetCount={presetCount}
+          isSaving={isSaving}
+        />
+      )}
+
+      {/* 
+        YOUR EXISTING PANELS GO HERE:
+        
+        {currentPanel === 'hud' && (
+          <HUD onPlay={handlePlayClick} />
+        )}
+        
+        {currentPanel === 'modeSelect' && (
+          <ModeSelectPanel
+            onBack={() => goBack()}
+            onSelect={(mode) => {
+              updateWizard({ mode });
+              navigate('duration');
+            }}
+          />
+        )}
+        
+        {currentPanel === 'mentalPrep1' && (
+          <MentalPrepPanel1
+            onContinue={handleContinueMentalPrep}
+            onBack={() => goBack()}
+          >
+            <SkipPrepButton onSkip={handleSkipMentalPrep} />
+          </MentalPrepPanel1>
+        )}
+        
+        {currentPanel === 'mentalPrep2' && (
+          <MentalPrepPanel2
+            onContinue={handleContinueMentalPrep}
+            onBack={() => goBack()}
+          >
+            <SkipPrepButton onSkip={handleSkipMentalPrep} />
+          </MentalPrepPanel2>
+        )}
+        
+        {currentPanel === 'activeSession' && (
+          <ActiveSessionPanel config={sessionConfig} />
+        )}
+      */}
+    </div>
+  );
+};
+```
+
+---
+
+## Step 6: Update Types Index
+
+**Prompt for Cursor:**
+
+```
+Create an index file for types.
+
+Create file: src/types/index.ts
+
+export * from './panels';
+export * from './session';
+```
+
+---
+
+## Step 7: Update Hooks Index
+
+**Prompt for Cursor:**
+
+```
+Update the hooks index to include all hooks.
+
+Update file: src/hooks/index.ts
+
+export { usePresets } from './usePresets';
+export { useQuickStart } from './useQuickStart';
+export { useSavePreset } from './useSavePreset';
+export { useNavigation } from './useNavigation';
+export { useSessionStart } from './useSessionStart';
+```
+
+---
+
+## Step 8: Final Integration Testing
+
+**Testing Checkpoint 7: Full Flow Complete**
+
+### 8.1: Verify Build
+
+```bash
+npm run build
+```
+
+**Expected:** No TypeScript errors.
+
+### 8.2: Test Flow A - Quick Start
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Launch app | HUD appears |
+| 2 | Click Play | Entry Point panel appears |
+| 3 | Click Quick Start | Quick Start panel appears |
+| 4 | Select Flow mode | Mode card highlights orange |
+| 5 | Select 45 min | Duration shows 45 |
+| 6 | Click Start Session | Session starts |
+| 7 | Check HUD | Shows Flow mode, 45 min countdown |
+
+**Console Verification:**
+```javascript
+const presets = await window.__TAURI__.invoke('get_all_presets');
+console.log('Last Session:', presets.lastSession);
+// Should show: mode: Flow, durationMinutes: 45
+```
+
+### 8.3: Test Flow B - Use Preset
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Click Play | Entry Point appears |
+| 2 | Click Use Preset | Preset Picker appears |
+| 3 | See Recent section | Last Session visible (from Flow A) |
+| 4 | Click Start on "Coding Sprint" | Session starts |
+| 5 | Check HUD | Shows Legend mode, 90 min |
+
+### 8.4: Test Flow C - Create New with Save
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Click Play | Entry Point appears |
+| 2 | Click Create New | Mode select appears |
+| 3 | Select Legend | Mode selected |
+| 4 | Continue to Duration | Duration panel appears |
+| 5 | Set 60 min | Duration updates |
+| 6 | Continue through Apps/Domains | Panels appear in sequence |
+| 7 | On Mental Prep 1, click Skip | Save Prompt appears |
+| 8 | Enter "My Focus Time" | Name input |
+| 9 | Select 🎯 icon | Icon highlights |
+| 10 | Click Save & Start | Session starts |
+
+**Verify Preset Saved:**
+```javascript
+const presets = await window.__TAURI__.invoke('get_all_presets');
+const myPreset = presets.userPresets.find(p => p.name === 'My Focus Time');
+console.log('Saved preset:', myPreset);
+// Should show the preset with correct settings
+```
+
+### 8.5: Test Flow D - Create New without Save
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Go through Create New wizard | Complete all steps |
+| 2 | On Save Prompt, click "Just Start" | Session starts |
+| 3 | Check User Presets | No new preset created |
+| 4 | Check Last Session | Updated with wizard config |
+
+### 8.6: Test Back Navigation
+
+| From | Action | Expected To |
+|------|--------|-------------|
+| Entry Point | Click X or Escape | HUD |
+| Quick Start | Click Back | Entry Point |
+| Preset Picker | Click Back | Entry Point |
+| Mode Select | Click Back | Entry Point |
+| Duration | Click Back | Mode Select |
+| Mental Prep 1 | Click Back | Domains (or previous) |
+| Mental Prep 2 | Click Back | Mental Prep 1 |
+| Save Prompt (skipped) | Click Back | Mental Prep 1 |
+| Save Prompt (completed) | Click Back | Mental Prep 2 |
+
+### 8.7: Test Keyboard Shortcuts
+
+| Key | Context | Expected |
+|-----|---------|----------|
+| Escape | Entry Point | Returns to HUD |
+| Escape | Quick Start | Returns to Entry Point |
+| 1 | Entry Point | Selects Quick Start |
+| 2 | Entry Point | Selects Use Preset |
+| 3 | Entry Point | Selects Create New |
+| 1/2/3 | Quick Start | Selects Zen/Flow/Legend |
+| Enter | Quick Start (mode selected) | Starts session |
+
+### 8.8: Test Edge Cases
+
+| Scenario | Test | Expected |
+|----------|------|----------|
+| 5 presets exist | Try to save new | Shows limit warning |
+| No Last Session | Check Preset Picker | Recent section hidden |
+| No User Presets | Check Preset Picker | Empty state message |
+| Backend error | Disconnect DB | Error message shown |
+
+### 8.9: Full Visual Checklist
+
+- [ ] Entry Point shows 3 option cards
+- [ ] Quick Start shows mode selector and duration
+- [ ] Preset Picker shows sections correctly
+- [ ] Last Session appears in Recent after first session
+- [ ] User presets appear in My Presets
+- [ ] Default presets appear in Suggested
+- [ ] Skip button appears on mental prep screens
+- [ ] Save Prompt shows configuration summary
+- [ ] Save & Start button works
+- [ ] Just Start button works
+- [ ] Edit preset works
+- [ ] Delete preset works
+- [ ] All mode colors are correct (Zen=blue, Flow=orange, Legend=red)
+- [ ] All animations work smoothly
+- [ ] No console errors during normal operation
+
+---
+
+## Summary: What You Built in Phase 9
+
+### Components Created
+
+| Component | Location |
+|-----------|----------|
+| EntryPointPanel | `src/components/presets/` |
+| EntryOptionCard | `src/components/presets/` |
+| QuickStartPanel | `src/components/presets/` |
+| ModeCard, ModeSelector | `src/components/presets/` |
+| DurationButton, DurationSlider, DurationSelector | `src/components/presets/` |
+| SmartDefaultsInfo | `src/components/presets/` |
+| PresetPickerPanel | `src/components/presets/` |
+| PresetSection | `src/components/presets/` |
+| PresetCard | `src/components/presets/` |
+| PresetCardMenu | `src/components/presets/` |
+| PresetEditPanel | `src/components/presets/` |
+| DeleteConfirmDialog | `src/components/presets/` |
+| IconPicker | `src/components/presets/` |
+| PresetSkeleton, EmptyPresets | `src/components/presets/` |
+| SkipPrepButton | `src/components/presets/` |
+| SavePresetPrompt | `src/components/presets/` |
+| ConfigurationSummary | `src/components/presets/` |
+
+### Hooks Created
+
+| Hook | Purpose |
+|------|---------|
+| usePresets | Preset CRUD and state |
+| useQuickStart | Quick Start logic |
+| useSavePreset | Save preset logic |
+| useNavigation | Panel navigation |
+| useSessionStart | Session start from all paths |
+
+### Backend (Rust)
+
+| Module | Purpose |
+|--------|---------|
+| presets/types.rs | Type definitions |
+| presets/persistence.rs | Database CRUD |
+| presets/defaults.rs | Default presets & blocklists |
+| presets/app_cache.rs | App categorization |
+| commands/presets.rs | Tauri commands |
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| presets | User and default presets |
+| cached_apps | App categorization cache |
+| blocked_domains | Default blocked domains |
+| app_scan_metadata | Scan tracking |
+
+---
+
+## Phase 9 Complete! 🎉
+
+### What Users Can Now Do
+
+1. **Quick Start** - 2 clicks to start focusing
+2. **Use Preset** - 1 click with saved configuration
+3. **Create New** - Full wizard with save option
+4. **Last Session** - Instantly repeat previous session
+5. **Save Presets** - Up to 5 custom configurations
+6. **Edit Presets** - Modify name, icon, mode, duration
+7. **Delete Presets** - Remove unwanted presets
+8. **Skip Mental Prep** - Optional preparation screens
+
+### Metrics Achieved
+
+| Goal | Target | Achieved |
+|------|--------|----------|
+| Quick Start clicks | 2 | ✅ 2 |
+| Preset clicks | 1 | ✅ 1 |
+| Max user presets | 5 | ✅ 5 |
+| Default presets | 4 | ✅ 4 |
+
+---
+
+## Next Steps
+
+With Phase 9 complete, you can proceed to:
+
+1. **Phase 5** - Cognitive Detection (keystroke/mouse tracking)
+2. **Phase 6** - Hard Enforcement (actually block apps)
+3. **Phase 7** - Audio & Polish (sound cues, animations)
+4. **Phase 10** - Smart Learning ("Is this for work?" prompts)

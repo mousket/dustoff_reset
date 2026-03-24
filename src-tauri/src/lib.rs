@@ -11,6 +11,7 @@ pub mod badges;
 pub mod commands;
 pub mod models;
 pub mod permissions;
+pub mod presets;
 pub mod storage;
 pub mod telemetry;
 
@@ -24,5 +25,6 @@ pub struct AppState {
 pub use badges::*;
 pub use commands::*;
 pub use models::*;
+pub use presets::*;
 pub use storage::*;
 pub use telemetry::*;

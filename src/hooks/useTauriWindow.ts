@@ -9,9 +9,13 @@ export const PANEL_DIMENSIONS = {
   hudOnly: { width: 320, height: 80 },
   calibration: { width: 420, height: 720 },      // Calibration ceremony
   preSession: { width: 420, height: 700 },       // 6-step wizard needs more height
+  entryPoint: { width: 420, height: 700 },       // Entry Point: How do you want to start?
+  quickStart: { width: 500, height: 740 },       // Quick Start panel (wider)
+  presetPicker: { width: 480, height: 700 },     // Preset Picker panel
+  savePrompt: { width: 480, height: 700 },        // Save Preset Prompt panel
   reset: { width: 520, height: 520 },            // Reset ritual selection
   parkingLot: { width: 540, height: 640 },       // Parking lot management
-  parkingLotHarvest: { width: 640, height: 720 },// Harvest panel
+  parkingLotHarvest: { width: 660, height: 720 },// Harvest panel
   postSessionSummary: { width: 640, height: 850 },// Session summary (with bandwidth impact)
   sessionReflection: { width: 600, height: 640 },// Reflection questions (increased)
   flowCelebration: { width: 540, height: 300 },  // Flow celebration

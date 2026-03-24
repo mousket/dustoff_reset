@@ -21,6 +21,12 @@ import type {
 } from '@/lib/badges/types'
 
 import type { PermissionState } from '@/lib/permissions/types'
+import type { 
+  AllPresetsResponse, 
+  SessionPreset, 
+  CreatePresetInput,
+  QuickStartConfig 
+} from '@/lib/presets/types'
 
 // Telemetry stats type (matching Rust SessionTelemetryStats)
 export interface SessionTelemetryStats {
@@ -341,6 +347,85 @@ export const tauriBridge = {
 
   requestPermission: async (permissionType: string): Promise<void> => {
     return invoke('request_permission', { permissionType })
+  },
+
+  // ============================================
+  // PRESETS
+  // ============================================
+
+  initPresets: async (): Promise<void> => {
+    return invoke('init_presets')
+  },
+
+  getAllPresets: async (): Promise<AllPresetsResponse> => {
+    return invoke('get_all_presets')
+  },
+
+  getPreset: async (id: string): Promise<SessionPreset> => {
+    return invoke('get_preset', { id })
+  },
+
+  createUserPreset: async (input: CreatePresetInput): Promise<SessionPreset> => {
+    return invoke('create_user_preset', { input })
+  },
+
+  updateUserPreset: async (input: { 
+    id: string; 
+    name?: string; 
+    icon?: string;
+    mode?: string;
+    durationMinutes?: number;
+    whitelistedApps?: string[];
+    whitelistedDomains?: string[];
+    useDefaultBlocklist?: boolean;
+    includeMentalPrep?: boolean;
+  }): Promise<SessionPreset> => {
+    return invoke('update_user_preset', { input })
+  },
+
+  deleteUserPreset: async (id: string): Promise<void> => {
+    return invoke('delete_user_preset', { id })
+  },
+
+  saveAsLastSession: async (
+    mode: string,
+    durationMinutes: number,
+    whitelistedApps: string[],
+    whitelistedDomains: string[],
+    useDefaultBlocklist: boolean,
+    includeMentalPrep: boolean
+  ): Promise<void> => {
+    return invoke('save_as_last_session', {
+      mode,
+      durationMinutes,
+      whitelistedApps,
+      whitelistedDomains,
+      useDefaultBlocklist,
+      includeMentalPrep,
+    })
+  },
+
+  usePreset: async (id: string): Promise<SessionPreset> => {
+    return invoke('use_preset', { id })
+  },
+
+  getQuickStartConfig: async (
+    mode: string, 
+    durationMinutes: number
+  ): Promise<QuickStartConfig> => {
+    return invoke('get_quick_start_config', { mode, durationMinutes })
+  },
+
+  getUserPresetCount: async (): Promise<number> => {
+    return invoke('get_user_preset_count')
+  },
+
+  getBlockedDomains: async (): Promise<string[]> => {
+    return invoke('get_blocked_domains')
+  },
+
+  getWhitelistedDomains: async (): Promise<string[]> => {
+    return invoke('get_whitelisted_domains')
   },
 
 }

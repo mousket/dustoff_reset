@@ -19,11 +19,11 @@ src-tauri/target/release/bundle/
 /Users/gerardbeaubrun/Documents/projects/dustoff_reset_desktop/dustoff_reset/src-tauri/target/release/bundle/macos/Dustoff Reset.app
 /Users/gerardbeaubrun/Documents/projects/dustoff_reset_desktop/dustoff_reset/src-tauri/target/release/bundle/dmg/Dustoff Reset_0.1.0_aarch64.dmg
 
-**Send Gao the `.dmg` file** - this is the professional installer.
+**Send the user the `.dmg` file** - this is the professional installer.
 
 ---
 
-## What Gao Will Experience
+## What the user Will Experience
 
 ### Installation Flow
 
@@ -37,7 +37,7 @@ src-tauri/target/release/bundle/
 
 3. **First Launch - Gatekeeper Warning**
    
-   ⚠️ **This is the big one!** Since the app isn't signed with an Apple Developer certificate, Gao will see:
+   ⚠️ **This is the big one!** Since the app isn't signed with an Apple Developer certificate, the user will see:
 
    > "Dustoff Reset" cannot be opened because the developer cannot be verified.
 
@@ -47,7 +47,7 @@ src-tauri/target/release/bundle/
    - Click "Open" in the dialog
    - This only needs to be done once
 
-   **Tell Gao this upfront!** Include instructions.
+   **Tell the user this upfront!** Include instructions.
 
 ---
 
@@ -57,7 +57,7 @@ src-tauri/target/release/bundle/
 
 Your app uses `NSWorkspace` to detect the frontmost app. This **requires Accessibility permission**.
 
-**What Gao will see:**
+**What the user will see:**
 
 On first launch (when telemetry starts), macOS will show:
 
@@ -180,7 +180,7 @@ fn init_database(app: &tauri::App) -> Result<Connection, String> {
 }
 ```
 
-**If this is set up correctly, Gao's database will be created on first launch.**
+**If this is set up correctly, the user's database will be created on first launch.**
 
 ---
 
@@ -230,7 +230,7 @@ Without an Apple Developer account ($99/year), the app will be **unsigned**, whi
 
 ---
 
-## What to Send Gao
+## What to Send the user
 
 ### The Package
 
@@ -239,7 +239,7 @@ Without an Apple Developer account ($99/year), the app will be **unsigned**, whi
    src-tauri/target/release/bundle/dmg/Dustoff Reset_x.x.x_aarch64.dmg
    ```
    
-   If Gao has an Intel Mac, you also need:
+   If the user has an Intel Mac, you also need:
    ```
    Dustoff Reset_x.x.x_x64.dmg
    ```
@@ -253,13 +253,13 @@ Without an Apple Developer account ($99/year), the app will be **unsigned**, whi
 
 2. **Upload to:** Google Drive, Dropbox, or WeTransfer
 
-### The Instructions (Send This to Gao)
+### The Instructions (Send This to the user)
 
 ---
 
 **Subject: Dustoff Reset - Test Build 🎯**
 
-Hey Gao!
+Hey the user!
 
 Here's the latest build of Dustoff Reset. Super excited for you to try it!
 
@@ -334,7 +334,7 @@ Before sending, update your `tauri.conf.json`:
 |----------|--------|
 | How to send? | Build DMG, upload to cloud storage, send link |
 | Installer needed? | DMG is the installer (drag to Applications) |
-| Permissions automatic? | macOS will prompt, Gao must approve manually |
+| Permissions automatic? | macOS will prompt, the user must approve manually |
 | SQLite created automatically? | Yes, if your init code is correct |
 | Database access? | App has full access to its own data directory |
 | Gatekeeper warning? | Yes, until you pay for Apple Developer ($99/yr) |

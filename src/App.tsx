@@ -48,6 +48,15 @@ import { ParkingLotHarvestAdapter } from '@/components/panels/ParkingLotHarvestA
 import { PostSessionSummaryAdapter } from '@/components/panels/PostSessionSummaryAdapter'
 import { SessionReflectionAdapter } from '@/components/panels/SessionReflectionAdapter'
 import { getNextSessionItems, getActiveParkingLotItems, type ParkingLotItemFull } from '@/lib/parking-lot-storage'
+import { PanelContainer } from '@/components/PanelContainer'
+
+// Preset panels
+import { EntryPointPanel } from '@/components/presets/EntryPointPanel'
+import { QuickStartPanel } from '@/components/presets/QuickStartPanel'
+import { PresetPickerPanel } from '@/components/presets/PresetPickerPanel'
+import { SavePresetPrompt } from '@/components/presets/SavePresetPrompt'
+import type { QuickStartConfig, SessionPreset, SessionMode as PresetSessionMode } from '@/lib/presets/types'
+import { useSavePreset } from '@/hooks/useSavePreset'
 
 // Overlays
 import { InterventionOverlayAdapter } from '@/components/overlays/InterventionOverlayAdapter'
@@ -76,7 +85,8 @@ function App() {
   // ============================================
   const { isGranted, isLoading: permissionsLoading } = usePermissions()
   const [permissionsComplete, setPermissionsComplete] = useState(false)
-  const [skippedPermissions, setSkippedPermissions] = useState(false)
+  // Skip permission setup pane - let OS handle permission requests naturally
+  const [skippedPermissions, setSkippedPermissions] = useState(true)
 
   // Note: showPermissionSetup is derived after mode state is defined (see DERIVED section)
 
@@ -187,6 +197,19 @@ function App() {
   
   // Track last whitelisted app for "Return to Work" feature
   const lastWhitelistedAppRef = useRef<string | null>(null)
+
+  // ============================================
+  // SAVE PRESET STATE
+  // ============================================
+  const [skippedMentalPrep, setSkippedMentalPrep] = useState(false)
+  const [pendingSessionConfig, setPendingSessionConfig] = useState<PreSessionConfig | null>(null)
+  const { 
+    isSaving, 
+    canSave, 
+    presetCount, 
+    checkCanSave, 
+    savePreset 
+  } = useSavePreset()
 
   // ============================================
   // SESSION MANAGER HOOK
@@ -359,6 +382,15 @@ function App() {
         // Non-fatal - continue with app initialization
       }
 
+      // Initialize preset system
+      try {
+        await tauriBridge.initPresets()
+        console.log('[App] Preset system initialized')
+      } catch (presetErr) {
+        console.error('[App] Failed to initialize presets:', presetErr)
+        // Non-fatal - continue with app initialization
+      }
+
       // Check for crashed session
       const recovery = await tauriBridge.getRecoveryData()
       if (recovery) {
@@ -396,14 +428,123 @@ function App() {
   }
 
   // ============================================
+  // SESSION ENDING HANDLERS
+  // ============================================
+  
+  // Shared function to end session and transition to post-session flow
+  // Used for both natural completions (handleTimeUp) and manual endings (handleEndSessionConfirm)
+  const handleEndSessionDirectly = async (
+    reason: 'completed' | 'mission_complete' | 'stopping_early' | 'pulled_away',
+    subReason?: string
+  ) => {
+    console.log('[App] Ending session directly:', reason, subReason)
+    
+    // === TELEMETRY: Stop monitoring ===
+    try {
+      telemetryStats.deactivate()
+      await tauriBridge.stopTelemetryMonitor()
+      if (telemetryCleanupRef.current) {
+        telemetryCleanupRef.current()
+        telemetryCleanupRef.current = null
+      }
+      console.log('[Telemetry] Monitor stopped')
+    } catch (telemetryError) {
+      console.error('[Telemetry] Failed to stop monitor:', telemetryError)
+    }
+    
+    // === TELEMETRY: Save stats ===
+    try {
+      await telemetryStats.saveStats()
+      console.log('[Telemetry] Stats saved')
+    } catch (statsError) {
+      console.error('[Telemetry] Failed to save stats:', statsError)
+    }
+
+    const finalSession = await sessionManager.endSession(reason, subReason)
+
+    if (finalSession) {
+      console.log('[App] Session ended:', {
+        victoryLevel: finalSession.victoryLevel,
+        flowEfficiency: finalSession.flowEfficiency,
+        duration: finalSession.actualDurationMinutes,
+        reason,
+        subReason,
+      })
+      
+      // === BADGES: Evaluate session for badge unlocks ===
+      const isCompleted = reason === 'completed' || reason === 'mission_complete'
+      const quitEarly = reason === 'stopping_early' || reason === 'pulled_away'
+      
+      console.log('[Badges] Session end reason:', reason, '| Completed:', isCompleted, '| QuitEarly:', quitEarly)
+      
+      try {
+        const stats = collectSessionStats(
+          {
+            sessionId: sessionManager.sessionId || `session_${Date.now()}`,
+            mode: sessionManager.currentSession?.mode || 'Zen',
+            durationMinutes: finalSession.actualDurationMinutes || 0,
+            finalBandwidth: Math.round(bandwidthEngine.current),
+            completed: isCompleted,
+            quitEarly,
+          },
+          {
+            distractionCount: telemetryStats.stats.offenseCount || 0,
+            delayGatesShown: telemetryStats.stats.interventionCount || 0,
+            delayGatesReturned: telemetryStats.stats.interventionReturnedCount || 0,
+            blocksShown: telemetryStats.stats.interventionCount || 0,
+            extensionsSurvived: 0, // TODO: Track extensions survived
+            totalPenalties: Math.abs(telemetryStats.stats.totalPenaltyPoints || 0),
+            totalBonuses: telemetryStats.stats.totalBonusPoints || 0,
+          }
+        )
+        
+        console.log('[Badges] Evaluating session with stats:', JSON.stringify(stats, null, 2))
+        
+        const badgeResult = await evaluateSession(stats)
+        
+        console.log('[Badges] Evaluation result:', {
+          unlockedCount: badgeResult.unlocked.length,
+          unlocked: badgeResult.unlocked.map(b => b.badgeId),
+          streakUpdates: badgeResult.streakUpdates.length,
+        })
+        
+        if (badgeResult.unlocked.length > 0) {
+          // Convert user badges to badge definitions for display
+          const unlockedDefs = badgeResult.unlocked
+            .map(ub => {
+              const def = getBadgeById(ub.badgeId)
+              console.log(`[Badges] Getting definition for ${ub.badgeId}:`, def ? def.name : 'NOT FOUND')
+              return def
+            })
+            .filter((b): b is BadgeDefinition => b !== null)
+          
+          console.log('🏆 [Badges] Setting newly unlocked badges:', unlockedDefs.map(b => b.name))
+          console.log('🏆 [Badges] Badge definitions:', unlockedDefs)
+          setNewlyUnlockedBadges(unlockedDefs)
+          console.log('🏆 [Badges] State update triggered!')
+        } else {
+          console.log('[Badges] No badges unlocked this session')
+        }
+        
+        if (badgeResult.streakUpdates.length > 0) {
+          console.log('[Badges] Streak updates:', badgeResult.streakUpdates)
+        }
+      } catch (badgeError) {
+        console.error('[Badges] Evaluation failed:', badgeError)
+      }
+    }
+
+    setMode('post-session')
+    setCurrentPanel('postSessionSummary')
+  }
+
+  // ============================================
   // TIMER CALLBACKS
   // ============================================
   function handleTimeUp() {
-    console.log('[App] Time is up! Pausing session and showing completion modal.')
-    // Pause the session so timer stops
-    setMode('paused')
-    // Show the end session modal to let user complete the session
-    setShowEndSessionModal(true)
+    console.log('[App] Time is up! Session completed naturally. Going directly to post-session flow.')
+    // Session ended naturally - skip End Session modal and go directly to post-session panels
+    handleEndSessionDirectly('mission_complete', 'Perfect timing')
   }
 
   function handleOvertime() {
@@ -574,10 +715,578 @@ function App() {
   // ============================================
 
   const handleStartSession = () => {
+    setCurrentPanel('entryPoint')
+  }
+
+  // Entry Point navigation handlers
+  const handleSelectQuickStart = () => {
+    setCurrentPanel('quickStart')
+  }
+
+  const handleSelectPreset = () => {
+    setCurrentPanel('presetPicker')
+  }
+
+  // Handle preset selection from PresetPickerPanel
+  const handlePresetSelected = async (preset: SessionPreset) => {
+    try {
+      // Convert preset to session config
+      const sessionConfig: SessionConfig = {
+        mode: preset.mode,
+        durationMinutes: preset.durationMinutes,
+        intention: '', // Presets don't require intention
+        whitelistedApps: preset.whitelistedApps,
+        whitelistedTabs: preset.whitelistedDomains,
+      }
+
+      await sessionManager.startSession(sessionConfig)
+
+      // Reset bandwidth engine for new session
+      bandwidthEngine.resetEngine()
+      
+      // Reset telemetry stats for new session
+      telemetryStats.resetStats()
+
+      setCurrentPanel(null)
+      setMode('session')
+      
+      // Store whitelist for recovery data saving
+      setCurrentWhitelistedApps(preset.whitelistedApps)
+      setCurrentWhitelistedTabs(preset.whitelistedDomains)
+      setInitialElapsedSeconds(0)  // Fresh session starts at 0
+
+      console.log('[App] Preset session started:', sessionManager.sessionId)
+      console.log('[App] Preset:', preset.name)
+      console.log('[App] Whitelisted apps:', preset.whitelistedApps)
+      console.log('[App] Whitelisted domains:', preset.whitelistedDomains)
+
+      // === TELEMETRY: Start monitoring ===
+      if (sessionManager.sessionId) {
+        console.log('[Telemetry] About to start monitor...')
+        try {
+          telemetryStats.activate()
+          offenseCountRef.current = 0
+          
+          const sessionMode = preset.mode as 'Zen' | 'Flow' | 'Legend'
+          const whitelistedApps = preset.whitelistedApps
+          const whitelistedTabs = preset.whitelistedDomains
+          
+          console.log('[Telemetry] Setting up listeners first...')
+          const cleanup = await setupTelemetryListeners({
+            onAppSwitch: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              const isWhitelisted = isAppWhitelisted(event.appInfo, whitelistedApps)
+              
+              console.log(`[Telemetry] 📱 App switch: ${appName} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              if (isWhitelisted && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
+              
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                isWhitelisted
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName})`
+                )
+              }
+            },
+            onNonWhitelistedApp: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              
+              console.log(`[Telemetry] ⚠️ Non-whitelisted app: ${appName} | Category: ${category}`)
+              
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName}) - not whitelisted`
+                )
+                
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  appName
+                )
+                telemetryStats.recordAppSwitch(appName, false)
+                
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                const intervention = getInterventionConfig(
+                  event.appInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${appName} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: appName,
+                    triggerApp: appName,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${appName}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: appName,
+                    triggerApp: appName,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${appName} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
+              }
+            },
+            onTabSwitch: (event) => {
+              if (!event.browserTab?.domain) return
+              
+              const domain = event.browserTab.domain
+              const category = getDomainCategory(domain)
+              const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+              
+              console.log(`[Telemetry] 🌐 Tab switch: ${domain} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              if (isWhitelisted) return
+              
+              if (!isDistraction(category)) return
+              
+              const penaltyResult = calculateDomainPenalty(
+                domain,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${domain} (${penaltyResult.categoryName})`
+                )
+                
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  domain
+                )
+                telemetryStats.recordDomainVisit(domain, false)
+                
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                const mockAppInfo = {
+                  appName: domain,
+                  bundleId: null,
+                  windowTitle: null,
+                  activeSince: Date.now(),
+                }
+                
+                const intervention = getInterventionConfig(
+                  mockAppInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                const browserName = event.browserTab.browser || 'Chrome'
+                
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${domain} in ${browserName} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: domain,
+                    triggerApp: browserName,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${domain} in ${browserName}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: domain,
+                    triggerBrowser: browserName,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${domain} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
+              }
+            },
+            onNonWhitelistedDomain: (event) => {
+              if (!event.browserTab?.domain) return
+              const domain = event.browserTab.domain
+              console.log(`[Telemetry] ⚠️ Non-whitelisted domain event: ${domain}`)
+            },
+            onReturnToWhitelisted: (event) => {
+              const appName = event.appInfo?.appName || 'app'
+              console.log(`[Telemetry] ✅ Returned to whitelisted: ${appName}`)
+              
+              if (appName && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
+              
+              const bonusResult = calculateBonus('quick_return', sessionMode)
+              bandwidthEngine.applyTelemetryBonus(
+                bonusResult.finalBonus,
+                `Returned to ${appName}`
+              )
+            },
+            onAnyEvent: (event) => {
+              console.log('[Telemetry] Event:', event.eventType)
+            },
+          })
+          telemetryCleanupRef.current = cleanup
+          console.log('[Telemetry] ✅ Listeners set up')
+          
+          console.log('[Telemetry] Starting Rust monitor...')
+          await tauriBridge.startTelemetryMonitor(
+            sessionManager.sessionId,
+            whitelistedApps,
+            whitelistedTabs
+          )
+          console.log('[Telemetry] ✅ Monitor started for session:', sessionManager.sessionId)
+        } catch (telemetryError) {
+          console.error('[Telemetry] Failed to start monitor:', telemetryError)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to start preset session:', error)
+    }
+  }
+
+  const handleSelectCreateNew = () => {
     setCurrentPanel('preSession')
   }
 
-  const handleSessionStart = async (config: PreSessionConfig) => {
+  // Quick Start session handler
+  const handleQuickStartSession = async (config: QuickStartConfig) => {
+    try {
+      const sessionConfig: SessionConfig = {
+        mode: config.mode,
+        durationMinutes: config.durationMinutes,
+        intention: '', // Quick Start doesn't require intention
+        whitelistedApps: config.whitelistedApps,
+        whitelistedTabs: config.whitelistedDomains, // Note: QuickStartConfig uses whitelistedDomains
+      }
+
+      await sessionManager.startSession(sessionConfig)
+
+      // Reset bandwidth engine for new session
+      bandwidthEngine.resetEngine()
+      
+      // Reset telemetry stats for new session
+      telemetryStats.resetStats()
+
+      setCurrentPanel(null)
+      setMode('session')
+      
+      // Store whitelist for recovery data saving
+      setCurrentWhitelistedApps(config.whitelistedApps)
+      setCurrentWhitelistedTabs(config.whitelistedDomains)
+      setInitialElapsedSeconds(0)  // Fresh session starts at 0
+
+      console.log('[App] Quick Start session started:', sessionManager.sessionId)
+      console.log('[App] Whitelisted apps:', config.whitelistedApps)
+      console.log('[App] Whitelisted domains:', config.whitelistedDomains)
+
+      // === TELEMETRY: Start monitoring ===
+      if (sessionManager.sessionId) {
+        console.log('[Telemetry] About to start monitor...')
+        try {
+          telemetryStats.activate()
+          offenseCountRef.current = 0
+          
+          const sessionMode = config.mode as 'Zen' | 'Flow' | 'Legend'
+          const whitelistedApps = config.whitelistedApps
+          const whitelistedTabs = config.whitelistedDomains
+          
+          console.log('[Telemetry] Setting up listeners first...')
+          const cleanup = await setupTelemetryListeners({
+            onAppSwitch: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              const isWhitelisted = isAppWhitelisted(event.appInfo, whitelistedApps)
+              
+              console.log(`[Telemetry] 📱 App switch: ${appName} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              if (isWhitelisted && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
+              
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                isWhitelisted
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName})`
+                )
+              }
+            },
+            onNonWhitelistedApp: (event) => {
+              if (!event.appInfo) return
+              
+              const appName = event.appInfo.appName
+              const category = getAppCategory(event.appInfo)
+              
+              console.log(`[Telemetry] ⚠️ Non-whitelisted app: ${appName} | Category: ${category}`)
+              
+              const penaltyResult = calculateAppSwitchPenalty(
+                event.appInfo,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${appName} (${penaltyResult.categoryName}) - not whitelisted`
+                )
+                
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  appName
+                )
+                telemetryStats.recordAppSwitch(appName, false)
+                
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                const intervention = getInterventionConfig(
+                  event.appInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${appName} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: appName,
+                    triggerApp: appName,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${appName}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: appName,
+                    triggerApp: appName,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${appName} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
+              }
+            },
+            onTabSwitch: (event) => {
+              if (!event.browserTab?.domain) return
+              
+              const domain = event.browserTab.domain
+              const category = getDomainCategory(domain)
+              const isWhitelisted = isDomainWhitelisted(domain, whitelistedTabs)
+              
+              console.log(`[Telemetry] 🌐 Tab switch: ${domain} | Category: ${category} | Whitelisted: ${isWhitelisted}`)
+              
+              if (isWhitelisted) return
+              
+              if (!isDistraction(category)) return
+              
+              const penaltyResult = calculateDomainPenalty(
+                domain,
+                sessionMode,
+                offenseCountRef.current + 1,
+                false
+              )
+              
+              if (penaltyResult.finalPenalty < 0) {
+                offenseCountRef.current++
+                bandwidthEngine.applyTelemetryPenalty(
+                  penaltyResult.finalPenalty,
+                  `${domain} (${penaltyResult.categoryName})`
+                )
+                
+                telemetryStats.recordPenalty(
+                  penaltyResult.finalPenalty,
+                  penaltyResult.categoryName,
+                  domain
+                )
+                telemetryStats.recordDomainVisit(domain, false)
+                
+                sessionManager.recordDistraction(penaltyResult.categoryName)
+                sessionManager.addTimelineBlock('distracted')
+                
+                const mockAppInfo = {
+                  appName: domain,
+                  bundleId: null,
+                  windowTitle: null,
+                  activeSince: Date.now(),
+                }
+                
+                const intervention = getInterventionConfig(
+                  mockAppInfo,
+                  sessionMode,
+                  offenseCountRef.current,
+                  false
+                )
+                
+                const browserName = event.browserTab.browser || 'Chrome'
+                
+                if (sessionMode === 'Flow' && intervention.type === 'delay_gate') {
+                  console.log(`[DelayGate] Triggering for ${domain} in ${browserName} (${intervention.delaySeconds}s)`)
+                  sessionManager.recordIntervention('delay_gate')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setDelayGateState({
+                    isOpen: true,
+                    triggerName: domain,
+                    triggerApp: browserName,
+                    category: category,
+                    delaySeconds: intervention.delaySeconds || 10,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || 'Wait to continue, or return to work.',
+                  })
+                }
+                
+                if (sessionMode === 'Legend' && intervention.type === 'block_screen') {
+                  console.log(`[LegendIntervention] Triggering for ${domain} in ${browserName}`)
+                  sessionManager.recordIntervention('block_screen')
+                  setCurrentPanel(null)
+                  resizeForPanel('intervention')
+                  setBlockScreenState({
+                    isOpen: true,
+                    triggerName: domain,
+                    triggerBrowser: browserName,
+                    category: category,
+                    offenseNumber: offenseCountRef.current,
+                    message: intervention.message || `${domain} is blocked.`,
+                    triggeredExtension: intervention.triggerExtension,
+                    extensionMinutes: intervention.extensionMinutes,
+                  })
+                }
+              }
+            },
+            onNonWhitelistedDomain: (event) => {
+              if (!event.browserTab?.domain) return
+              const domain = event.browserTab.domain
+              console.log(`[Telemetry] ⚠️ Non-whitelisted domain event: ${domain}`)
+            },
+            onReturnToWhitelisted: (event) => {
+              const appName = event.appInfo?.appName || 'app'
+              console.log(`[Telemetry] ✅ Returned to whitelisted: ${appName}`)
+              
+              if (appName && appName !== 'dustoff_reset') {
+                lastWhitelistedAppRef.current = appName
+                console.log(`[Telemetry] 📌 Saved last whitelisted app: ${appName}`)
+              }
+              
+              const bonusResult = calculateBonus('quick_return', sessionMode)
+              bandwidthEngine.applyTelemetryBonus(
+                bonusResult.finalBonus,
+                `Returned to ${appName}`
+              )
+            },
+            onAnyEvent: (event) => {
+              console.log('[Telemetry] Event:', event.eventType)
+            },
+          })
+          telemetryCleanupRef.current = cleanup
+          console.log('[Telemetry] ✅ Listeners set up')
+          
+          console.log('[Telemetry] Starting Rust monitor...')
+          await tauriBridge.startTelemetryMonitor(
+            sessionManager.sessionId,
+            whitelistedApps,
+            whitelistedTabs
+          )
+          console.log('[Telemetry] ✅ Monitor started for session:', sessionManager.sessionId)
+        } catch (telemetryError) {
+          console.error('[Telemetry] Failed to start monitor:', telemetryError)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to start Quick Start session:', error)
+    }
+  }
+
+  // Internal function to actually start the session
+  const startSessionInternal = async (config: PreSessionConfig) => {
     try {
       const sessionConfig: SessionConfig = {
         mode: config.mode,
@@ -884,6 +1593,54 @@ function App() {
     }
   }
 
+  // Handle session start - show save prompt if coming from Create New
+  const handleSessionStart = async (config: PreSessionConfig) => {
+    // Check if we're coming from Create New (preSession panel)
+    // If so, show save prompt instead of starting directly
+    if (currentPanel === 'preSession') {
+      setPendingSessionConfig(config)
+      setSkippedMentalPrep(false) // PreSessionPanel doesn't track skip yet, default to false
+      await checkCanSave()
+      setCurrentPanel('savePrompt')
+      await resizeForPanel('savePrompt')
+    } else {
+      // Direct start (from preset or quick start)
+      await startSessionInternal(config)
+    }
+  }
+
+  // Handle save and start
+  const handleSaveAndStart = async (name: string, icon: string, includeMentalPrep: boolean) => {
+    if (!pendingSessionConfig) return
+
+    const success = await savePreset(name, icon, {
+      mode: pendingSessionConfig.mode as PresetSessionMode,
+      durationMinutes: pendingSessionConfig.durationMinutes,
+      whitelistedApps: pendingSessionConfig.whitelistedApps,
+      whitelistedDomains: pendingSessionConfig.whitelistedTabs,
+      useDefaultBlocklist: true, // Default for Create New flow
+    }, includeMentalPrep)
+
+    if (success) {
+      await startSessionInternal(pendingSessionConfig)
+      setPendingSessionConfig(null)
+    }
+  }
+
+  // Handle just start (no save)
+  const handleJustStart = async () => {
+    if (!pendingSessionConfig) return
+    await startSessionInternal(pendingSessionConfig)
+    setPendingSessionConfig(null)
+  }
+
+  // Handle back from save prompt
+  const handleBackFromSave = () => {
+    setPendingSessionConfig(null)
+    setCurrentPanel('preSession')
+    resizeForPanel('preSession')
+  }
+
   const handlePauseSession = async () => {
     await sessionManager.pauseSession()
     setMode('paused')
@@ -913,104 +1670,8 @@ function App() {
     console.log('🚀 [EndSession] SubReason:', subReason)
     setShowEndSessionModal(false)
     
-    // === TELEMETRY: Stop monitoring ===
-    try {
-      telemetryStats.deactivate()
-      await tauriBridge.stopTelemetryMonitor()
-      if (telemetryCleanupRef.current) {
-        telemetryCleanupRef.current()
-        telemetryCleanupRef.current = null
-      }
-      console.log('[Telemetry] Monitor stopped')
-    } catch (telemetryError) {
-      console.error('[Telemetry] Failed to stop monitor:', telemetryError)
-    }
-    
-    // === TELEMETRY: Save stats ===
-    try {
-      await telemetryStats.saveStats()
-      console.log('[Telemetry] Stats saved')
-    } catch (statsError) {
-      console.error('[Telemetry] Failed to save stats:', statsError)
-    }
-
-    const finalSession = await sessionManager.endSession(reason, subReason)
-
-    if (finalSession) {
-      console.log('[App] Session ended:', {
-        victoryLevel: finalSession.victoryLevel,
-        flowEfficiency: finalSession.flowEfficiency,
-        duration: finalSession.actualDurationMinutes,
-        reason,
-        subReason,
-      })
-      
-      // === BADGES: Evaluate session for badge unlocks ===
-      // Note: EndSessionModal passes "completed", not "mission_complete"
-      const isCompleted = reason === 'completed' || reason === 'mission_complete'
-      const quitEarly = reason === 'stopping_early' || reason === 'pulled_away'
-      
-      console.log('[Badges] Session end reason:', reason, '| Completed:', isCompleted, '| QuitEarly:', quitEarly)
-      
-      try {
-        const stats = collectSessionStats(
-          {
-            sessionId: sessionManager.sessionId || `session_${Date.now()}`,
-            mode: sessionManager.currentSession?.mode || 'Zen',
-            durationMinutes: finalSession.actualDurationMinutes || 0,
-            finalBandwidth: Math.round(bandwidthEngine.current),
-            completed: isCompleted,
-            quitEarly,
-          },
-          {
-            distractionCount: telemetryStats.stats.offenseCount || 0,
-            delayGatesShown: telemetryStats.stats.interventionCount || 0,
-            delayGatesReturned: telemetryStats.stats.interventionReturnedCount || 0,
-            blocksShown: telemetryStats.stats.interventionCount || 0,
-            extensionsSurvived: 0, // TODO: Track extensions survived
-            totalPenalties: Math.abs(telemetryStats.stats.totalPenaltyPoints || 0),
-            totalBonuses: telemetryStats.stats.totalBonusPoints || 0,
-          }
-        )
-        
-        console.log('[Badges] Evaluating session with stats:', JSON.stringify(stats, null, 2))
-        
-        const badgeResult = await evaluateSession(stats)
-        
-        console.log('[Badges] Evaluation result:', {
-          unlockedCount: badgeResult.unlocked.length,
-          unlocked: badgeResult.unlocked.map(b => b.badgeId),
-          streakUpdates: badgeResult.streakUpdates.length,
-        })
-        
-        if (badgeResult.unlocked.length > 0) {
-          // Convert user badges to badge definitions for display
-          const unlockedDefs = badgeResult.unlocked
-            .map(ub => {
-              const def = getBadgeById(ub.badgeId)
-              console.log(`[Badges] Getting definition for ${ub.badgeId}:`, def ? def.name : 'NOT FOUND')
-              return def
-            })
-            .filter((b): b is BadgeDefinition => b !== null)
-          
-          console.log('🏆 [Badges] Setting newly unlocked badges:', unlockedDefs.map(b => b.name))
-          console.log('🏆 [Badges] Badge definitions:', unlockedDefs)
-          setNewlyUnlockedBadges(unlockedDefs)
-          console.log('🏆 [Badges] State update triggered!')
-        } else {
-          console.log('[Badges] No badges unlocked this session')
-        }
-        
-        if (badgeResult.streakUpdates.length > 0) {
-          console.log('[Badges] Streak updates:', badgeResult.streakUpdates)
-        }
-      } catch (badgeError) {
-        console.error('[Badges] Evaluation failed:', badgeError)
-      }
-    }
-
-    setMode('post-session')
-    setCurrentPanel('postSessionSummary')
+    // Use the shared function to end session and transition to post-session flow
+    await handleEndSessionDirectly(reason, subReason)
   }
 
   const handleEndSessionQuickExit = async () => {
@@ -1418,6 +2079,60 @@ function App() {
             onClose={handleClosePanel}
             onComplete={handleCalibrationComplete}
           />
+        )}
+
+        {/* Entry Point Panel */}
+        {currentPanel === 'entryPoint' && (
+          <PanelContainer isOpen={true}>
+            <EntryPointPanel
+              onSelectQuickStart={handleSelectQuickStart}
+              onSelectPreset={handleSelectPreset}
+              onSelectCreateNew={handleSelectCreateNew}
+              onClose={handleClosePanel}
+            />
+          </PanelContainer>
+        )}
+
+        {/* Quick Start Panel */}
+        {currentPanel === 'quickStart' && (
+          <PanelContainer isOpen={true}>
+            <QuickStartPanel
+              onBack={() => setCurrentPanel('entryPoint')}
+              onSessionStart={handleQuickStartSession}
+            />
+          </PanelContainer>
+        )}
+
+        {/* Preset Picker Panel */}
+        {currentPanel === 'presetPicker' && (
+          <PanelContainer isOpen={true}>
+            <PresetPickerPanel
+              onBack={() => setCurrentPanel('entryPoint')}
+              onSelectPreset={handlePresetSelected}
+            />
+          </PanelContainer>
+        )}
+
+        {/* Save Preset Prompt Panel */}
+        {currentPanel === 'savePrompt' && pendingSessionConfig && (
+          <PanelContainer isOpen={true}>
+            <SavePresetPrompt
+              config={{
+                mode: pendingSessionConfig.mode as PresetSessionMode,
+                durationMinutes: pendingSessionConfig.durationMinutes,
+                whitelistedApps: pendingSessionConfig.whitelistedApps,
+                whitelistedDomains: pendingSessionConfig.whitelistedTabs,
+                useDefaultBlocklist: true,
+              }}
+              skippedMentalPrep={skippedMentalPrep}
+              onSaveAndStart={handleSaveAndStart}
+              onJustStart={handleJustStart}
+              onBack={handleBackFromSave}
+              canSave={canSave}
+              presetCount={presetCount}
+              isSaving={isSaving}
+            />
+          </PanelContainer>
         )}
 
         {currentPanel === 'preSession' && (

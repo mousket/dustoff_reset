@@ -4,6 +4,7 @@
 mod badges;
 mod models;
 mod permissions;
+mod presets;
 mod storage;
 mod telemetry;
 mod commands;
@@ -25,6 +26,27 @@ use commands::permissions::{
     open_system_permissions,
     get_current_platform,
     request_permission,
+};
+
+// Import preset commands
+use commands::presets::{
+    init_presets,
+    get_all_presets,
+    get_preset,
+    create_user_preset,
+    update_user_preset,
+    delete_user_preset,
+    save_as_last_session,
+    use_preset,
+    get_quick_start_config,
+    get_user_preset_count,
+    get_all_cached_apps,
+    cache_new_app,
+    set_app_user_classification,
+    check_needs_app_scan,
+    record_app_scan_complete,
+    get_blocked_domains,
+    get_whitelisted_domains,
 };
 
 fn main() {
@@ -133,6 +155,24 @@ fn main() {
             open_system_permissions,
             get_current_platform,
             request_permission,
+            // Preset commands
+            init_presets,
+            get_all_presets,
+            get_preset,
+            create_user_preset,
+            update_user_preset,
+            delete_user_preset,
+            save_as_last_session,
+            use_preset,
+            get_quick_start_config,
+            get_user_preset_count,
+            get_all_cached_apps,
+            cache_new_app,
+            set_app_user_classification,
+            check_needs_app_scan,
+            record_app_scan_complete,
+            get_blocked_domains,
+            get_whitelisted_domains,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
