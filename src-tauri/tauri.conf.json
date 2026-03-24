@@ -50,9 +50,7 @@
     ],
     "macOS": {
       "entitlements": null,
-      "minimumSystemVersion": "10.13",
-      "_signingIdentity": "Developer ID Application: Gao Kabubi (SMPLNQ29SK)",
-      "_providerShortName": "SMPLNQ29SK"
+      "minimumSystemVersion": "10.13"
     },
     "windows": {
       "certificateThumbprint": null,
