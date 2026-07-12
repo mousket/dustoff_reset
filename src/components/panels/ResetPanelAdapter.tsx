@@ -12,6 +12,9 @@ interface ResetPanelAdapterProps {
   onSelectRitual: (ritualType: RitualType) => void
   onRitualComplete?: (data: RitualCompletionData) => void
   sessionMode?: SessionMode
+  /** Why the panel opened: 'critical' hard stop, 'landing' after a rough
+   *  session ending, or null for a user-initiated reset */
+  context?: 'critical' | 'landing' | null
 }
 
 /**
@@ -36,15 +39,36 @@ export function ResetPanelAdapter({
   onSelectRitual,
   onRitualComplete,
   sessionMode = 'Flow',
+  context = null,
 }: ResetPanelAdapterProps) {
-  
+
   const handleSelectRitual = (ritualType: RitualType) => {
     // Notify that ritual started (no bonus awarded yet!)
     onSelectRitual(ritualType)
   }
-  
+
   return (
     <PanelContainer isOpen={isOpen}>
+      {context === 'critical' && (
+        <div className="mb-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10">
+          <p className="text-sm text-red-300 font-light">
+            Capacity critical — the session is paused.
+          </p>
+          <p className="text-xs text-zinc-400 mt-1">
+            Pushing through from here costs more than it produces. Take a short reset to come back up.
+          </p>
+        </div>
+      )}
+      {context === 'landing' && (
+        <div className="mb-3 p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10">
+          <p className="text-sm text-cyan-300 font-light">
+            That session ended before you were done.
+          </p>
+          <p className="text-xs text-zinc-400 mt-1">
+            Land it properly — two minutes to reset before whatever's next. Or close this if you're good.
+          </p>
+        </div>
+      )}
       <ResetPanel
         isOpen={true}  // Always true since PanelContainer handles visibility
         onClose={onClose}

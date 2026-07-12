@@ -192,6 +192,12 @@ function App() {
   const [showEndSessionModal, setShowEndSessionModal] = useState(false)
   const [showTimeUpModal, setShowTimeUpModal] = useState(false)
 
+  // Reset framing: why the reset panel was opened ('critical' hard stop,
+  // 'landing' after a rough session ending, or null for a plain reset)
+  const [resetContext, setResetContext] = useState<'critical' | 'landing' | null>(null)
+  // Set when a session ends unfinished; offers a landing reset after the post-session flow
+  const pendingLandingResetRef = useRef(false)
+
   // Telemetry cleanup function ref
   const telemetryCleanupRef = useRef<(() => void) | null>(null)
   
@@ -236,6 +242,16 @@ function App() {
       console.log('[App] Focus slipping trigger!')
       setInterventionType('focus-slipping')
       setShowInterventionOverlay(true)
+    },
+    onCriticalTrigger: () => {
+      // Capacity critical (< 30): hard stop per the DustOff methodology —
+      // pause the session and route through a reset instead of another nudge.
+      console.log('[App] Capacity critical! Pausing session and opening reset.')
+      sessionManager.recordIntervention('critical-hard-stop')
+      setShowInterventionOverlay(false)
+      setMode('paused')
+      setResetContext('critical')
+      setCurrentPanel('reset')
     },
     onFlowAchieved: () => {
       console.log('[App] 🎉 Flow achieved!')
@@ -441,7 +457,11 @@ function App() {
     subReason?: string
   ) => {
     console.log('[App] Ending session directly:', reason, subReason)
-    
+
+    // A session that ended unfinished deserves a landing, not just a summary.
+    // Offer a short reset once the post-session flow completes.
+    pendingLandingResetRef.current = reason === 'stopping_early' || reason === 'pulled_away'
+
     // === TELEMETRY: Stop monitoring ===
     try {
       telemetryStats.deactivate()
@@ -1736,7 +1756,12 @@ function App() {
   // ============================================
 
   const handleReset = () => {
-    sessionManager.recordIntervention('reset-panel-opened')
+    // Works with or without a running session — a DustOff reset is not
+    // session-bound. Only record an intervention when a session exists.
+    if (mode === 'session' || mode === 'paused') {
+      sessionManager.recordIntervention('reset-panel-opened')
+    }
+    setResetContext(null)
     setCurrentPanel('reset')
   }
 
@@ -1761,8 +1786,12 @@ function App() {
       skipped: data.wasSkipped,
     })
     
-    // Only award points for time actually spent
-    if (actualMinutes > 0) {
+    // Only award points for time actually spent — and only when a session
+    // is running (standalone/landing resets have no bandwidth to credit)
+    const sessionRunning = mode === 'session' || mode === 'paused'
+    if (!sessionRunning) {
+      console.log(`[Reset] Standalone ritual complete (${data.actualDuration}s) - no session, no points`)
+    } else if (actualMinutes > 0) {
       const bonusPoints = actualMinutes * 2
       bandwidthEngine.applyResetBonus(actualMinutes)
       telemetryStats.recordResetRitual(bonusPoints)
@@ -1778,6 +1807,7 @@ function App() {
   }
 
   const handleResetClose = () => {
+    setResetContext(null)
     // Resume session if it was paused for the reset ritual
     if (mode === 'paused') {
       sessionManager.resumeSession()
@@ -1962,8 +1992,14 @@ function App() {
   }
 
   const handleHarvestComplete = () => {
-    setCurrentPanel(null)
     setMode('idle')
+    if (pendingLandingResetRef.current) {
+      pendingLandingResetRef.current = false
+      setResetContext('landing')
+      setCurrentPanel('reset')
+    } else {
+      setCurrentPanel(null)
+    }
   }
 
   // ============================================
@@ -1986,10 +2022,16 @@ function App() {
   }
 
   const handleClosePanel = () => {
-    setCurrentPanel(null)
     if (mode === 'post-session') {
       setMode('idle')
+      if (pendingLandingResetRef.current) {
+        pendingLandingResetRef.current = false
+        setResetContext('landing')
+        setCurrentPanel('reset')
+        return
+      }
     }
+    setCurrentPanel(null)
   }
 
   // ============================================
@@ -2190,6 +2232,7 @@ function App() {
             onSelectRitual={handleResetComplete}
             onRitualComplete={handleRitualComplete}
             sessionMode={sessionModeForHUD}
+            context={resetContext}
           />
         )}
 

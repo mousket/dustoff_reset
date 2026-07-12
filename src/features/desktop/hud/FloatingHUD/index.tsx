@@ -210,6 +210,20 @@ export function FloatingHUD({
             </button>
           )}
 
+          {/* Standalone reset - a DustOff reset shouldn't require a running session */}
+          {(mode === "idle" || mode === "estimated") && onReset && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onReset()
+              }}
+              className="w-8 h-8 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs transition-colors"
+              title="Reset"
+            >
+              ↺
+            </button>
+          )}
+
           {/* Pause button - pauses session AND opens reset ritual */}
           {mode === "session" && onPauseSession && (
             <button
