@@ -59,6 +59,9 @@ export const tauriBridge = {
   loadCalibration: (): Promise<CalibrationData | null> =>
     invoke('load_calibration'),
 
+  getCalibrationHistory: (limit?: number): Promise<CalibrationData[]> =>
+    invoke('get_calibration_history', { limit }),
+
   clearCalibration: (): Promise<void> =>
     invoke('clear_calibration'),
 
