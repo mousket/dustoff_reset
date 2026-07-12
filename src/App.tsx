@@ -69,6 +69,8 @@ import { EndSessionModalAdapter } from '@/components/modals/EndSessionModalAdapt
 import { InterruptedSessionModalAdapter } from '@/components/modals/InterruptedSessionModalAdapter'
 import { TimeUpModalAdapter } from '@/components/modals/TimeUpModalAdapter'
 import type { ExtensionMinutes } from '@/features/desktop/modals/TimeUpModal'
+import { useCalendar } from '@/hooks/useCalendar'
+import { PreMeetingNudge } from '@/components/PreMeetingNudge'
 
 // DEV ONLY - Badge Test Panel (remove before production)
 import { BadgeTestPanel } from '@/components/dev/BadgeTestPanel'
@@ -193,10 +195,13 @@ function App() {
   const [showTimeUpModal, setShowTimeUpModal] = useState(false)
 
   // Reset framing: why the reset panel was opened ('critical' hard stop,
-  // 'landing' after a rough session ending, or null for a plain reset)
-  const [resetContext, setResetContext] = useState<'critical' | 'landing' | null>(null)
+  // 'landing' after a rough session ending, 'pre-meeting' before a calendar
+  // event, or null for a plain reset)
+  const [resetContext, setResetContext] = useState<'critical' | 'landing' | 'pre-meeting' | null>(null)
   // Set when a session ends unfinished; offers a landing reset after the post-session flow
   const pendingLandingResetRef = useRef(false)
+  // Pre-meeting nudge dismissal (keyed per event so each meeting nudges once)
+  const [dismissedNudgeKey, setDismissedNudgeKey] = useState<string | null>(null)
 
   // Telemetry cleanup function ref
   const telemetryCleanupRef = useRef<(() => void) | null>(null)
@@ -298,6 +303,37 @@ function App() {
   })
 
   // ============================================
+  // CALENDAR AWARENESS (read-only, local)
+  // ============================================
+  const calendar = useCalendar({
+    enabled: mode === 'idle' || mode === 'session' || mode === 'paused',
+  })
+
+  // Pre-meeting nudge: event within 15 min while idle → offer a reset first
+  const nudgeKey = calendar.nextEvent
+    ? `${calendar.nextEvent.title}@${calendar.nextEvent.startsAt.getTime()}`
+    : null
+  const preMeetingNudgeVisible =
+    mode === 'idle' &&
+    !currentPanel &&
+    !showEndSessionModal &&
+    !showTimeUpModal &&
+    calendar.nextEvent !== null &&
+    calendar.nextEvent.minutesUntil <= 15 &&
+    calendar.nextEvent.minutesUntil >= 1 &&
+    nudgeKey !== dismissedNudgeKey
+
+  const handleNudgeReset = () => {
+    if (nudgeKey) setDismissedNudgeKey(nudgeKey)
+    setResetContext('pre-meeting')
+    setCurrentPanel('reset')
+  }
+
+  const handleNudgeDismiss = () => {
+    if (nudgeKey) setDismissedNudgeKey(nudgeKey)
+  }
+
+  // ============================================
   // BADGES HOOK
   // ============================================
   const { evaluateSession, dailyStreak, totalBadges, unlockedCount, isStreakAtRisk: checkStreakAtRisk } = useBadges()
@@ -340,14 +376,19 @@ function App() {
     }
   }, [showPermissionSetup])
 
-  // Resize window when end session / time-up modal opens
+  // Resize window when end session / time-up modal opens (or the
+  // pre-meeting nudge needs room below the HUD)
   useEffect(() => {
     if (showEndSessionModal || showTimeUpModal) {
       resizeForPanel('endSession')
     } else if (!currentPanel) {
-      resizeForPanel(null) // Back to HUD only
+      if (preMeetingNudgeVisible) {
+        tauriBridge.resizeWindow(320, 220)
+      } else {
+        resizeForPanel(null) // Back to HUD only
+      }
     }
-  }, [showEndSessionModal, showTimeUpModal, currentPanel])
+  }, [showEndSessionModal, showTimeUpModal, currentPanel, preMeetingNudgeVisible])
 
   // Resize window for badge panels AND resize back when badges close
   useEffect(() => {
@@ -2092,6 +2133,16 @@ function App() {
           onReset={handleReset}
         />
 
+        {/* Pre-meeting nudge - arrive at the next event with capacity */}
+        {preMeetingNudgeVisible && calendar.nextEvent && (
+          <PreMeetingNudge
+            eventTitle={calendar.nextEvent.title}
+            minutesUntil={calendar.nextEvent.minutesUntil}
+            onReset={handleNudgeReset}
+            onDismiss={handleNudgeDismiss}
+          />
+        )}
+
         {/* Recovery Modal - shows when session was interrupted */}
         {mode === 'recovery' && recoveryData && (
           <div className="mt-3">
@@ -2140,6 +2191,8 @@ function App() {
           <TimeUpModalAdapter
             isOpen={true}
             intention={sessionManager.currentSession?.intention}
+            nextEventTitle={calendar.nextEvent?.title ?? null}
+            nextEventMinutes={calendar.nextEvent?.minutesUntil ?? null}
             onFinished={handleTimeUpFinished}
             onExtend={handleTimeUpExtend}
             onStop={handleTimeUpStop}

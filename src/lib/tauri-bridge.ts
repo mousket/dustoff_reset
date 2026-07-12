@@ -28,6 +28,14 @@ import type {
   QuickStartConfig 
 } from '@/lib/presets/types'
 
+// Calendar event type (matching Rust CalendarEvent)
+export interface CalendarEvent {
+  title: string
+  startIso: string
+  endIso: string
+  calendar: string
+}
+
 // Telemetry stats type (matching Rust SessionTelemetryStats)
 export interface SessionTelemetryStats {
   appSwitches: number
@@ -133,6 +141,13 @@ export const tauriBridge = {
 
   generateUuid: (): Promise<string> =>
     invoke('generate_uuid'),
+
+  // ============================================
+  // CALENDAR (read-only, local)
+  // ============================================
+
+  getUpcomingEvents: (hoursAhead?: number): Promise<CalendarEvent[]> =>
+    invoke('get_upcoming_events', { hoursAhead }),
 
   // ============================================
   // WINDOW (from Day 1)

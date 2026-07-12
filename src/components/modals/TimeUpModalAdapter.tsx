@@ -9,6 +9,9 @@ import { TimeUpModal, type ExtensionMinutes } from '@/features/desktop/modals/Ti
 interface TimeUpModalAdapterProps {
   isOpen: boolean
   intention?: string | null
+  /** Next calendar event, if known — used to warn when an extension collides */
+  nextEventTitle?: string | null
+  nextEventMinutes?: number | null
   onFinished: () => void
   onExtend: (minutes: ExtensionMinutes) => void
   onStop: () => void
@@ -24,12 +27,22 @@ interface TimeUpModalAdapterProps {
  *    - "I need more time" (+5/+10/+15) → timer extends, session resumes
  *    - "Stopping here — didn't finish" → stopping_early / "Ran out of time"
  */
-export function TimeUpModalAdapter({ isOpen, intention, onFinished, onExtend, onStop }: TimeUpModalAdapterProps) {
+export function TimeUpModalAdapter({
+  isOpen,
+  intention,
+  nextEventTitle,
+  nextEventMinutes,
+  onFinished,
+  onExtend,
+  onStop,
+}: TimeUpModalAdapterProps) {
   return (
     <div className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <TimeUpModal
         isOpen={isOpen}
         intention={intention}
+        nextEventTitle={nextEventTitle}
+        nextEventMinutes={nextEventMinutes}
         onFinished={onFinished}
         onExtend={onExtend}
         onStop={onStop}

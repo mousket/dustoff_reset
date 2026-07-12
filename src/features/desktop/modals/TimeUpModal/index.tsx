@@ -7,6 +7,9 @@ export type ExtensionMinutes = 5 | 10 | 15
 interface TimeUpModalProps {
   isOpen: boolean
   intention?: string | null
+  /** Next calendar event, if known — warns when an extension collides */
+  nextEventTitle?: string | null
+  nextEventMinutes?: number | null
   onFinished: () => void
   onExtend: (minutes: ExtensionMinutes) => void
   onStop: () => void
@@ -14,7 +17,15 @@ interface TimeUpModalProps {
 
 const EXTENSION_OPTIONS: ExtensionMinutes[] = [5, 10, 15]
 
-export function TimeUpModal({ isOpen, intention, onFinished, onExtend, onStop }: TimeUpModalProps) {
+export function TimeUpModal({
+  isOpen,
+  intention,
+  nextEventTitle,
+  nextEventMinutes,
+  onFinished,
+  onExtend,
+  onStop,
+}: TimeUpModalProps) {
   const [selectedChoice, setSelectedChoice] = useState<TimeUpChoice | null>(null)
   const [selectedExtension, setSelectedExtension] = useState<ExtensionMinutes>(10)
 
@@ -90,23 +101,32 @@ export function TimeUpModal({ isOpen, intention, onFinished, onExtend, onStop }:
             </div>
 
             {selectedChoice === "more_time" && (
-              <div className="mt-3 ml-8 flex gap-2 animate-in fade-in duration-200">
-                {EXTENSION_OPTIONS.map((minutes) => (
-                  <button
-                    key={minutes}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedExtension(minutes)
-                    }}
-                    className={`px-4 py-2 rounded-lg border text-sm transition-all ${
-                      selectedExtension === minutes
-                        ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                        : "border-zinc-700 text-zinc-400 hover:border-blue-500/50"
-                    }`}
-                  >
-                    +{minutes} min
-                  </button>
-                ))}
+              <div className="mt-3 ml-8 animate-in fade-in duration-200">
+                <div className="flex gap-2">
+                  {EXTENSION_OPTIONS.map((minutes) => (
+                    <button
+                      key={minutes}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedExtension(minutes)
+                      }}
+                      className={`px-4 py-2 rounded-lg border text-sm transition-all ${
+                        selectedExtension === minutes
+                          ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                          : "border-zinc-700 text-zinc-400 hover:border-blue-500/50"
+                      }`}
+                    >
+                      +{minutes} min
+                    </button>
+                  ))}
+                </div>
+                {nextEventTitle != null &&
+                  nextEventMinutes != null &&
+                  selectedExtension >= nextEventMinutes && (
+                    <p className="mt-2 text-xs text-amber-400">
+                      +{selectedExtension} min runs into "{nextEventTitle}" (in {nextEventMinutes} min)
+                    </p>
+                  )}
               </div>
             )}
           </div>
