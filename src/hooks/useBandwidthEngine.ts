@@ -10,6 +10,7 @@ interface UseBandwidthEngineProps {
   mode: 'Zen' | 'Flow' | 'Legend'
   onFrictionTrigger: () => void       // bandwidth < 60
   onFocusSlippingTrigger: () => void  // bandwidth < 50
+  onCriticalTrigger?: () => void      // bandwidth < 30 — hard stop, route through reset
   onFlowAchieved: () => void          // sustained focus 12+ min
   onFlowLost: () => void              // exited flow state
 }
@@ -97,6 +98,7 @@ export function useBandwidthEngine({
   mode,
   onFrictionTrigger,
   onFocusSlippingTrigger,
+  onCriticalTrigger,
   onFlowAchieved,
   onFlowLost,
 }: UseBandwidthEngineProps): BandwidthState & BandwidthActions {
@@ -113,6 +115,7 @@ export function useBandwidthEngine({
   const bandwidthHistory = useRef<number[]>([initialBandwidth])
   const frictionTriggered = useRef(false)
   const focusSlippingTriggered = useRef(false)
+  const criticalTriggered = useRef(false)
   const flowAchievedTriggered = useRef(false)
   const lastFocusBonusTime = useRef<number>(Date.now())
   
@@ -178,7 +181,12 @@ export function useBandwidthEngine({
         lastBandwidth.current = newBandwidth
         
         // Check intervention thresholds (only trigger once per threshold crossing)
-        if (newBandwidth < FOCUS_SLIPPING_THRESHOLD && prev >= FOCUS_SLIPPING_THRESHOLD) {
+        if (newBandwidth < CRITICAL_THRESHOLD && prev >= CRITICAL_THRESHOLD) {
+          if (!criticalTriggered.current && onCriticalTrigger) {
+            criticalTriggered.current = true
+            setTimeout(() => onCriticalTrigger(), 0)
+          }
+        } else if (newBandwidth < FOCUS_SLIPPING_THRESHOLD && prev >= FOCUS_SLIPPING_THRESHOLD) {
           if (!focusSlippingTriggered.current) {
             focusSlippingTriggered.current = true
             // Use setTimeout to avoid state update during render
@@ -198,6 +206,9 @@ export function useBandwidthEngine({
         if (newBandwidth >= FOCUS_SLIPPING_THRESHOLD + 5) {
           focusSlippingTriggered.current = false
         }
+        if (newBandwidth >= CRITICAL_THRESHOLD + 5) {
+          criticalTriggered.current = false
+        }
         
         return newBandwidth
       })
@@ -213,7 +224,7 @@ export function useBandwidthEngine({
     }, 1000)
     
     return () => clearInterval(interval)
-  }, [isSessionActive, isPaused, mode, isInFlow, bandwidth, onFrictionTrigger, onFocusSlippingTrigger])
+  }, [isSessionActive, isPaused, mode, isInFlow, bandwidth, onFrictionTrigger, onFocusSlippingTrigger, onCriticalTrigger])
   
   // Flow state tracking
   useEffect(() => {
