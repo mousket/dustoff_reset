@@ -35,6 +35,18 @@ pub fn clear_calibration(state: State<AppState>) -> Result<(), String> {
     storage::calibration::clear_calibration(&conn, &date)
 }
 
+/// Recent daily calibrations (newest first) — feeds the Progress panel's
+/// capacity trend. Uses the storage helper that already existed but was
+/// never exposed as a command.
+#[tauri::command]
+pub fn get_calibration_history(
+    state: State<AppState>,
+    limit: Option<i32>,
+) -> Result<Vec<CalibrationData>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    storage::calibration::get_recent_calibrations(&conn, limit.unwrap_or(30))
+}
+
 // ============================================
 // SESSION COMMANDS
 // ============================================

@@ -123,6 +123,7 @@ fn main() {
             commands::data::save_user,
             commands::data::get_user,
             commands::data::get_workday_date,
+            commands::data::get_calibration_history,
             commands::data::generate_uuid,
             commands::data::reset_all_data,
             // Telemetry commands

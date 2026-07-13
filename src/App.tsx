@@ -71,6 +71,7 @@ import { TimeUpModalAdapter } from '@/components/modals/TimeUpModalAdapter'
 import type { ExtensionMinutes } from '@/features/desktop/modals/TimeUpModal'
 import { useCalendar } from '@/hooks/useCalendar'
 import { PreMeetingNudge } from '@/components/PreMeetingNudge'
+import { ProgressPanelAdapter } from '@/components/panels/ProgressPanelAdapter'
 
 // DEV ONLY - Badge Test Panel (remove before production)
 import { BadgeTestPanel } from '@/components/dev/BadgeTestPanel'
@@ -1806,6 +1807,10 @@ function App() {
     setCurrentPanel('reset')
   }
 
+  const handleOpenProgress = () => {
+    setCurrentPanel('progress')
+  }
+
   const handleResetComplete = (ritualType: RitualType) => {
     // Called when ritual is SELECTED (not completed)
     // NO bonus awarded here - wait for actual completion
@@ -2131,6 +2136,7 @@ function App() {
           onOpenParkingLot={handleOpenParkingLot}
           onCalibrate={handleCalibrate}
           onReset={handleReset}
+          onOpenHistory={handleOpenProgress}
         />
 
         {/* Pre-meeting nudge - arrive at the next event with capacity */}
@@ -2275,6 +2281,13 @@ function App() {
             isOpen={true}
             onClose={handleClosePanel}
             onStartSession={handleSessionStart}
+          />
+        )}
+
+        {currentPanel === 'progress' && (
+          <ProgressPanelAdapter
+            isOpen={true}
+            onClose={handleClosePanel}
           />
         )}
 

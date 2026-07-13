@@ -20,6 +20,7 @@ export function FloatingHUD({
   onStopSession,
   onOpenParkingLot,
   onReset,
+  onOpenHistory,
 }: FloatingHUDProps) {
   const bandwidthValue = bandwidthScore ?? 0
   const bandwidthColor = getBandwidthColor(bandwidthScore)
@@ -221,6 +222,20 @@ export function FloatingHUD({
               title="Reset"
             >
               ↺
+            </button>
+          )}
+
+          {/* Progress dashboard - your capacity and sessions over time */}
+          {(mode === "idle" || mode === "estimated") && onOpenHistory && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenHistory()
+              }}
+              className="w-8 h-8 rounded-full bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 flex items-center justify-center text-purple-400 text-xs transition-colors"
+              title="Progress"
+            >
+              ▤
             </button>
           )}
 
