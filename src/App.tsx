@@ -67,6 +67,8 @@ import { BlockScreenAdapter, createInitialBlockScreenState, type BlockScreenStat
 // Modals
 import { EndSessionModalAdapter } from '@/components/modals/EndSessionModalAdapter'
 import { InterruptedSessionModalAdapter } from '@/components/modals/InterruptedSessionModalAdapter'
+import { TimeUpModalAdapter } from '@/components/modals/TimeUpModalAdapter'
+import type { ExtensionMinutes } from '@/features/desktop/modals/TimeUpModal'
 
 // DEV ONLY - Badge Test Panel (remove before production)
 import { BadgeTestPanel } from '@/components/dev/BadgeTestPanel'
@@ -188,6 +190,7 @@ function App() {
 
   // Modal state
   const [showEndSessionModal, setShowEndSessionModal] = useState(false)
+  const [showTimeUpModal, setShowTimeUpModal] = useState(false)
 
   // Telemetry cleanup function ref
   const telemetryCleanupRef = useRef<(() => void) | null>(null)
@@ -321,14 +324,14 @@ function App() {
     }
   }, [showPermissionSetup])
 
-  // Resize window when end session modal opens
+  // Resize window when end session / time-up modal opens
   useEffect(() => {
-    if (showEndSessionModal) {
+    if (showEndSessionModal || showTimeUpModal) {
       resizeForPanel('endSession')
     } else if (!currentPanel) {
       resizeForPanel(null) // Back to HUD only
     }
-  }, [showEndSessionModal, currentPanel])
+  }, [showEndSessionModal, showTimeUpModal, currentPanel])
 
   // Resize window for badge panels AND resize back when badges close
   useEffect(() => {
@@ -542,9 +545,13 @@ function App() {
   // TIMER CALLBACKS
   // ============================================
   function handleTimeUp() {
-    console.log('[App] Time is up! Session completed naturally. Going directly to post-session flow.')
-    // Session ended naturally - skip End Session modal and go directly to post-session panels
-    handleEndSessionDirectly('mission_complete', 'Perfect timing')
+    console.log('[App] Time is up! Asking the user how the session landed.')
+    // Don't assume the intention was met just because the clock ran out.
+    // Pause the session (freezes timer + bandwidth decay) and ask:
+    // finished / need more time / stopping without finishing.
+    if (showEndSessionModal) return // user is already in the manual end flow
+    setMode('paused')
+    setShowTimeUpModal(true)
   }
 
   function handleOvertime() {
@@ -1703,6 +1710,28 @@ function App() {
   }
 
   // ============================================
+  // TIME-UP MODAL HANDLERS
+  // ============================================
+
+  const handleTimeUpFinished = async () => {
+    setShowTimeUpModal(false)
+    await handleEndSessionDirectly('mission_complete', 'Perfect timing')
+  }
+
+  const handleTimeUpExtend = (minutes: ExtensionMinutes) => {
+    // "I need more time" is a planning signal, not a failure — no penalty.
+    sessionManager.recordIntervention(`needed-more-time-${minutes}min`)
+    timer.extendSession(minutes)
+    setShowTimeUpModal(false)
+    setMode('session')
+  }
+
+  const handleTimeUpStop = async () => {
+    setShowTimeUpModal(false)
+    await handleEndSessionDirectly('stopping_early', 'Ran out of time')
+  }
+
+  // ============================================
   // RESET HANDLERS
   // ============================================
 
@@ -2061,6 +2090,17 @@ function App() {
             onCancel={handleEndSessionCancel}
             onEndSession={handleEndSessionConfirm}
             onQuickExit={handleEndSessionQuickExit}
+          />
+        )}
+
+        {/* Time-Up Modal - session timer completed naturally */}
+        {showTimeUpModal && (
+          <TimeUpModalAdapter
+            isOpen={true}
+            intention={sessionManager.currentSession?.intention}
+            onFinished={handleTimeUpFinished}
+            onExtend={handleTimeUpExtend}
+            onStop={handleTimeUpStop}
           />
         )}
 
