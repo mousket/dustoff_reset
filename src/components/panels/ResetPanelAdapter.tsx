@@ -13,8 +13,9 @@ interface ResetPanelAdapterProps {
   onRitualComplete?: (data: RitualCompletionData) => void
   sessionMode?: SessionMode
   /** Why the panel opened: 'critical' hard stop, 'landing' after a rough
-   *  session ending, or null for a user-initiated reset */
-  context?: 'critical' | 'landing' | null
+   *  session ending, 'pre-meeting' ahead of a calendar event, or null for
+   *  a user-initiated reset */
+  context?: 'critical' | 'landing' | 'pre-meeting' | null
 }
 
 /**
@@ -56,6 +57,16 @@ export function ResetPanelAdapter({
           </p>
           <p className="text-xs text-zinc-400 mt-1">
             Pushing through from here costs more than it produces. Take a short reset to come back up.
+          </p>
+        </div>
+      )}
+      {context === 'pre-meeting' && (
+        <div className="mb-3 p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10">
+          <p className="text-sm text-cyan-300 font-light">
+            Meeting soon — arrive with capacity.
+          </p>
+          <p className="text-xs text-zinc-400 mt-1">
+            A short reset now beats walking in drained.
           </p>
         </div>
       )}

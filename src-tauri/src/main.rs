@@ -173,6 +173,8 @@ fn main() {
             record_app_scan_complete,
             get_blocked_domains,
             get_whitelisted_domains,
+            // Calendar commands (read-only, local)
+            commands::calendar::get_upcoming_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
